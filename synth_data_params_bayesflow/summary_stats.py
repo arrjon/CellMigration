@@ -47,6 +47,67 @@ def angle_degree(data_dict):
     return list_angle_degrees
 
 
+def mean_waiting_time(data_dict, time_interval=30., threshold=np.pi/4):
+    cell = np.stack([data_dict['x'], data_dict['y']], axis=1)
+    time_steps = len(data_dict['x'])
+    waiting_times = []
+    last_change = 0
+
+    # Compute initial direction
+    initial_direction = cell[1] - cell[0]
+    last_direction = np.arctan2(initial_direction[1], initial_direction[0])
+
+    for t in range(2, time_steps):
+        # Compute current direction
+        current_vector = cell[t] - cell[t-1]
+        current_direction = np.arctan2(current_vector[1], current_vector[0])
+
+        # Check if direction has changed
+        if abs(current_direction - last_direction) > threshold:
+            waiting_times.append((t-1) - last_change)
+            last_change = t-1
+
+        last_direction = current_direction
+
+    if waiting_times:
+        mean_wt = np.mean(waiting_times) * time_interval
+    else:
+        mean_wt = np.nan  # If no direction change occurred
+    return mean_wt
+
+
+def compute_mean_waiting_time(arr, time_interval=30, threshold=np.pi/4):
+    num_cells, time_steps, _ = arr.shape
+    mean_waiting_times = np.zeros(num_cells)
+
+    for cell in range(num_cells):
+        waiting_times = []
+        last_change = 0
+
+        # Compute initial direction
+        initial_direction = arr[cell, 1] - arr[cell, 0]
+        last_direction = np.arctan2(initial_direction[1], initial_direction[0])
+
+        for t in range(2, time_steps):
+            # Compute current direction
+            current_vector = arr[cell, t] - arr[cell, t-1]
+            current_direction = np.arctan2(current_vector[1], current_vector[0])
+
+            # Check if direction has changed
+            if abs(current_direction - last_direction) > threshold:  # 45 degree threshold
+                waiting_times.append((t-1) - last_change)
+                last_change = t-1
+
+            last_direction = current_direction
+
+        if waiting_times:
+            mean_waiting_times[cell] = np.mean(waiting_times) * time_interval
+        else:
+            mean_waiting_times[cell] = np.nan  # If no direction change occurred
+
+    return mean_waiting_times
+
+
 # my functions
 def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optional[list[dict]]:
     """
@@ -94,6 +155,7 @@ def reduced_coordinates_to_sumstat(cell_population):
     ta_list = []
     v_list = []
     ad_list = []
+    wt_list = []
 
     cell_count = cell_population.shape[0]
     # check if sim_dict_cut is empty
@@ -107,24 +169,33 @@ def reduced_coordinates_to_sumstat(cell_population):
             ta_list.append(turning_angle(sim_dict))
             v_list.append(velocity(sim_dict))
             ad_list.append(angle_degree(sim_dict))
+            wt_list.append(mean_waiting_time(sim_dict))
     if not msd_list:
-        return {'msd_mean': [np.inf], 'msd_var': [np.inf], 'ta_mean': [np.inf], 'ta_var': [np.inf],
-                'v_mean': [np.inf], 'v_var': [np.inf], 'ad_mean': [np.inf], 'ad_var': [np.inf]}
+        return {'msd_mean': [np.inf], 'msd_var': [np.inf],
+                'ta_mean': [np.inf], 'ta_var': [np.inf],
+                'v_mean': [np.inf], 'v_var': [np.inf],
+                'ad_mean': [np.inf], 'ad_var': [np.inf],
+                'wt_mean': [np.inf], 'wt_var': [np.inf]}
 
     # get the mean of list of lists with different lengths
     msd_mean = [np.mean(x) for x in msd_list]
     ta_mean = [np.mean(x) for x in ta_list]
     v_mean = [np.mean(x) for x in v_list]
     ad_mean = [np.mean(x) for x in ad_list]
+    wt_mean = [np.mean(x) for x in wt_list]
 
     # get the variance of list of lists with different lengths
     msd_var = [np.var(x) for x in msd_list]
     ta_var = [np.var(x) for x in ta_list]
     v_var = [np.var(x) for x in v_list]
     ad_var = [np.var(x) for x in ad_list]
+    wt_var = [np.var(x) for x in wt_list]
 
-    sim = {'msd_mean': msd_mean, 'msd_var': msd_var, 'ta_mean': ta_mean, 'ta_var': ta_var,
-           'v_mean': v_mean, 'v_var': v_var, 'ad_mean': ad_mean, 'ad_var': ad_var}
+    sim = {'msd_mean': msd_mean, 'msd_var': msd_var,
+           'ta_mean': ta_mean, 'ta_var': ta_var,
+           'v_mean': v_mean, 'v_var': v_var,
+           'ad_mean': ad_mean, 'ad_var': ad_var,
+           'wt_mean': wt_mean, 'wt_var': wt_var}
     return sim
 
 
@@ -186,6 +257,11 @@ def compute_mean_summary_stats(simulation_list: list[dict]) -> tuple:
         vel = simulation_list[i]['v_mean']
         VEL_mean.append([x for x in vel if not np.isnan(x) and not np.isinf(x)])
 
+    WT_mean = []
+    for i in range(len(simulation_list)):
+        wt = simulation_list[i]['wt_mean']
+        WT_mean.append([x for x in wt if not np.isnan(x) and not np.isinf(x)])
+
     # get the average of ad of all particles
     ad_averg = []
     for i in range(len(ad_mean)):
@@ -209,4 +285,11 @@ def compute_mean_summary_stats(simulation_list: list[dict]) -> tuple:
         if not np.isnan(vel) and not np.isinf(vel):
             VEL_averg.append(vel)
 
-    return ad_mean, MSD_mean, TA_mean, VEL_mean, ad_averg, MSD_averg, TA_averg, VEL_averg
+    WT_averg = []
+    for i in range(len(WT_mean)):
+        wt = np.mean(WT_mean[i])
+        if not np.isnan(wt) and not np.isinf(wt):
+            WT_averg.append(wt)
+
+    return (ad_mean, MSD_mean, TA_mean, VEL_mean, WT_mean,
+            ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg)

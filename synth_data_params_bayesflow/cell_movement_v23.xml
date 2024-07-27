@@ -501,11 +501,12 @@ if(space.x&lt;140 and space.x>=100, 1, if(space.x&lt;100 and space.x>=60, 0.6,0.
         <Constant symbol="move.duration.median" value="972.3305666873691"/>
     </Disabled>
 -->
+            <Constant symbol="move.duration.scale" value="30"/>
+            <Constant symbol="move.duration.shape" value="1"/>
             <!--    <Disabled>
-        <Constant symbol="move.duration.scale" value="1"/>
+        <Constant symbol="move.duration.mean" value="100"/>
     </Disabled>
 -->
-            <Constant symbol="move.duration.mean" value="100"/>
             <!--    <Disabled>
         <Constant symbol="AA_val" value="90.75334533127302"/>
     </Disabled>
@@ -518,7 +519,7 @@ if(space.x&lt;140 and space.x>=100, 1, if(space.x&lt;100 and space.x>=60, 0.6,0.
         <Constant symbol="BB" name="env_grad_sensitivity" value="44.421145587716545"/>
     </Disabled>
 -->
-            <Constant symbol="move.strength" name="strength of movement" value="0.21359842373064927*0.01"/>
+            <Constant symbol="move.strength" name="strength of movement" value="0.1"/>
             <Property symbol="tumble.run_duration" name="run duration" value="0.0"/>
             <Property symbol="tumble.last" name="last tumble event" value="0"/>
             <DirectedMotion direction="move.dir" strength="move.strength"/>
@@ -533,8 +534,8 @@ if(space.x&lt;140 and space.x>=100, 1, if(space.x&lt;100 and space.x>=60, 0.6,0.
         </Rule>
     </Disabled>
 -->
-                <Rule symbol-ref="tumble.run_duration">
-                    <Expression>rand_gamma(1, 1/move.duration.mean)   </Expression>
+                <Rule symbol-ref="tumble.run_duration" name="new update time">
+                    <Expression>rand_gamma(move.duration.shape, move.duration.scale)    </Expression>
                 </Rule>
                 <Intermediate symbol="alpha" value="rand_uni(0,2*pi)"/>
                 <!--    <Disabled>
@@ -567,7 +568,7 @@ if(space.x&lt;140 and space.x>=100, 1, if(space.x&lt;100 and space.x>=60, 0.6,0.
         </VectorRule>
     </Disabled>
 -->
-                <VectorRule symbol-ref="move.dir">
+                <VectorRule symbol-ref="move.dir" name="random direction" notation="x,y,z">
                     <Expression>cos(alpha), sin(alpha) , 0</Expression>
                 </VectorRule>
             </Event>

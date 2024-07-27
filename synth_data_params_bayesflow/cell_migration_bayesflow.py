@@ -38,14 +38,15 @@ else:
 # parameter name, and the value are the mapping values, to get the map value for parameter
 # check here: https://fitmulticell.readthedocs.io/en/latest/example/minimal.html#Inference-problem-definition
 
+
 par_map = {
     'gradient_strength': './CellTypes/CellType/Constant[@symbol="gradient_strength"]',
-    'move.strength': './CellTypes/CellType/Constant[@symbol="move.strength"]',
-    'move.duration.mean': './CellTypes/CellType/Constant[@symbol="move.duration.mean"]',
-    #'move.duration.median': './CellTypes/CellType/Constant[@symbol="move.duration.median"]',
-    #    'move.duration.scale': './CellTypes/CellType/Constant[@symbol="move.duration.scale"]',
+    'move.strength': './CellTypes/CellType/Constant[@symbol="move.strength"]',  # 0.21359842373064927*0.01
+    # 'move.duration.mean': './CellTypes/CellType/Constant[@symbol="move.duration.mean"]',
+    # 'move.duration.median': './CellTypes/CellType/Constant[@symbol="move.duration.median"]',
+    # 'move.duration.scale': './CellTypes/CellType/Constant[@symbol="move.duration.scale"]',
     'cell_nodes': './Global/Constant[@symbol="cell_nodes"]',
-    #'d_env': './CellTypes/CellType/Property[@symbol="d_env"]',
+    # 'd_env': './CellTypes/CellType/Property[@symbol="d_env"]',
 }
 
 model_path = gp + "/cell_movement_v23.xml"  # time step is 30sec
@@ -64,6 +65,7 @@ if on_cluster:
         model_path, par_map=par_map, par_scale="lin",
         show_stdout=False, show_stderr=False,
         executable="ulimit -s unlimited; /home/jarruda_hpc/CellMigration/morpheus-2.3.7",
+        clean_simulation=True,
         raise_on_error=False, sumstat=sumstat)
 
     # todo: remember also change tiff path in model.xml!
@@ -72,17 +74,18 @@ else:
     model = morpheus_model.MorpheusModel(
         model_path, par_map=par_map, par_scale="lin",
         show_stdout=False, show_stderr=False,
+        clean_simulation=True,
         raise_on_error=False, sumstat=sumstat)
 
 # parameter values used to generate the synthetic data
 obs_pars = {
-    'gradient_strength': 500000,  # strength of the gradient of chemotaxis
-    'move.strength': 0.021,  # strength of directed motion
-    'move.duration.mean': 100,  # mean waiting time of exponential distribution
+    'gradient_strength': 500000.,  # strength of the gradient of chemotaxis
+    'move.strength': 1.,  # strength of directed motion
+    #'move.duration.mean': 100,  # mean waiting time of exponential distribution
     #'move.duration.median': 972.33,  # median waiting time of gamma distribution (actually the mean)
     # rand_gamma(move.duration.median/move.duration.scale,move.duration.scale)
-    # 'move.duration.scale': 96899.44860996476,
-    'cell_nodes': 30,  # volume of the cell
+    #'move.duration.scale': 30, #96899.44860996476,
+    'cell_nodes': 30.,  # volume of the cell
     #'d_env': 0.01,  # influence of random motion vs biased direction (previous movement?)
     # d_env * move.dir.x / move.dir.abs + (1-d_env)*cos(alpha), d_env * move.dir.y / move.dir.abs + (1-d_env)*sin(alpha) , 0
 }
@@ -345,27 +348,36 @@ class GroupSummaryNetwork(tf.keras.Model):
         return out
 
 
-checkpoint_path = 'amortizer-cell-migration-6'
 num_coupling_layers = 6
-num_dense = 2
+num_dense = 3
 use_attention = False
 use_bidirectional = False
 config_remove_nans = False
+summary_loss = None
 if job_array_id == 0:
-    checkpoint_path = 'amortizer-cell-migration-conv-7'
-    num_coupling_layers = 7
-    num_dense = 3
+    checkpoint_path = 'amortizer-cell-migration-conv-6'
 elif job_array_id == 1:
-    checkpoint_path = 'amortizer-cell-migration-attention-7'
-    num_coupling_layers = 7
-    num_dense = 3
-    use_attention = True
-elif job_array_id == 2:
-    checkpoint_path = 'amortizer-cell-migration-attention-7-bid'
-    num_coupling_layers = 7
-    num_dense = 3
+    checkpoint_path = 'amortizer-cell-migration-attention-6-bid'
     use_attention = True
     use_bidirectional = True
+elif job_array_id == 2:
+    checkpoint_path = 'amortizer-cell-migration-conv-7'
+    num_coupling_layers = 7
+elif job_array_id == 3:
+    checkpoint_path = 'amortizer-cell-migration-attention-7'
+    num_coupling_layers = 7
+    use_attention = True
+elif job_array_id == 4:
+    checkpoint_path = 'amortizer-cell-migration-attention-7-bid'
+    num_coupling_layers = 7
+    use_attention = True
+    use_bidirectional = True
+elif job_array_id == 5:
+    checkpoint_path = 'amortizer-cell-migration-attention-7-bid-MMD'
+    num_coupling_layers = 7
+    use_attention = True
+    use_bidirectional = True
+    summary_loss = 'MMD'
 # elif checkpoint_path == 'amortizer-cell-migration-conv-7-nan':
 #     num_coupling_layers = 7
 #     num_dense = 3
@@ -402,7 +414,8 @@ inference_net = InvertibleNetwork(num_params=n_params,
                                       "bins": 16,
                                   })
 
-amortizer = AmortizedPosterior(inference_net=inference_net, summary_net=summary_net)
+amortizer = AmortizedPosterior(inference_net=inference_net, summary_net=summary_net,
+                               summary_loss_fun=summary_loss)
 
 # %%
 # build the trainer with networks and generative model
