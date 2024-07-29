@@ -216,6 +216,7 @@ def reduce_to_coordinates(sumstat,
         sim_dict = {
             'x': sumstat["cell.center.x"][cell_data_idx][1:],
             'y': sumstat["cell.center.y"][cell_data_idx][1:]
+            # todo: maybe add time to the dict
         }
         # cut the region of interest, divide cells into multiple cells if they leave the region
         sim_dict_cut = cut_region(sim_dict,
@@ -235,7 +236,15 @@ def reduce_to_coordinates(sumstat,
     return sim_list
 
 
-def compute_mean_summary_stats(simulation_list: list[dict]) -> tuple:
+def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = True) -> tuple:
+    """
+    Compute the mean summary statistics of the simulation list.
+    First computes the mean of the statistics of each particle, then the mean of all particles in a population.
+
+    :param simulation_list: list of cell populations
+           remove_nan: remove nan and inf values from the averaged summary statistics of a population
+    :return:
+    """
     # put the 'ad' of all particles in one list
     ad_mean = []
     for i in range(len(simulation_list)):
@@ -266,30 +275,37 @@ def compute_mean_summary_stats(simulation_list: list[dict]) -> tuple:
     ad_averg = []
     for i in range(len(ad_mean)):
         ad = np.mean(ad_mean[i])
-        if not np.isnan(ad) and not np.isinf(ad):
+        if not remove_nan or (not np.isnan(ad) and not np.isinf(ad)):
             ad_averg.append(ad)
+    ad_averg = np.array(ad_averg)
+
     MSD_averg = []
     for i in range(len(MSD_mean)):
         msd = np.mean(MSD_mean[i])
-        if not np.isnan(msd) and not np.isinf(msd):
+        if not remove_nan or (not np.isnan(msd) and not np.isinf(msd)):
             MSD_averg.append(msd)
+    MSD_averg = np.array(MSD_averg)
+
     TA_averg = []
     for i in range(len(TA_mean)):
         ta = np.mean(TA_mean[i])
-        if not np.isnan(ta) and not np.isinf(ta):
+        if not remove_nan or (not np.isnan(ta) and not np.isinf(ta)):
             TA_averg.append(ta)
+    TA_averg = np.array(TA_averg)
 
     VEL_averg = []
     for i in range(len(VEL_mean)):
         vel = np.mean(VEL_mean[i])
-        if not np.isnan(vel) and not np.isinf(vel):
+        if not remove_nan or (not np.isnan(vel) and not np.isinf(vel)):
             VEL_averg.append(vel)
+    VEL_averg = np.array(VEL_averg)
 
     WT_averg = []
     for i in range(len(WT_mean)):
         wt = np.mean(WT_mean[i])
-        if not np.isnan(wt) and not np.isinf(wt):
+        if not remove_nan or (not np.isnan(wt) and not np.isinf(wt)):
             WT_averg.append(wt)
+    WT_averg = np.array(WT_averg)
 
     return (ad_mean, MSD_mean, TA_mean, VEL_mean, WT_mean,
             ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg)

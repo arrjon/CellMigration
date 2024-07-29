@@ -10,7 +10,7 @@ import pyabc
 from fitmulticell import model as morpheus_model
 from fitmulticell.sumstat import SummaryStatistics
 
-from summary_stats import reduce_to_coordinates
+from summary_stats import reduce_to_coordinates, reduced_coordinates_to_sumstat, compute_mean_summary_stats
 
 # get the job array id and number of processors
 run_args = sys.argv[1]
@@ -123,42 +123,43 @@ def prior_fun(batch_size: int) -> np.ndarray:
     return np.array(samples)
 
 
-def generate_population_data(param_batch: np.ndarray, data_dim: int, max_length: int) -> np.ndarray:
+def generate_population_data(param_batch: np.ndarray, cells_in_population: int, max_length: int) -> np.ndarray:
     """
     Generate population data
     :param param_batch:  batch of parameters
-    :param data_dim:  number of cells in a population (50)
+    :param cells_in_population:  number of cells in a population (50)
     :param max_length:  maximum length of the sequence
     :return:
     """
-    data_raw = []
+    data_batch = []
     for params in param_batch:
         params_dict = {key: p for key, p in zip(obs_pars.keys(), params)}
         sim = model.sample(params_dict)
-        data_raw.append(sim)  # generates a cell population in one experiment
+        data_batch.append(sim)  # generates a cell population in one experiment
 
-    data = np.ones((param_batch.shape[0], data_dim, max_length, 2)) * np.nan
+    data_batch_transformed = np.ones((param_batch.shape[0], cells_in_population, max_length, 2)) * np.nan
     # each cell is of different length, each with x and y coordinates, make a tensor out of it
     n_cells_not_visible = 0
-    for s_id, sample in enumerate(data_raw):
-        if len(sample) == 0:
+    for p_id, population_sim in enumerate(data_batch):
+        if len(population_sim) == 0:
             # no cells were visible in the simulation
             n_cells_not_visible += 1
             continue
-        for c_id, cell in enumerate(sample):
+        for c_id, cell_sim in enumerate(population_sim):
             # pre-pad the data with zeros, but first write zeros as nans to compute the mean and std
-            data[s_id, c_id, -len(cell['x']):, 0] = cell['x']
-            data[s_id, c_id, -len(cell['y']):, 1] = cell['y']
+            data_batch_transformed[p_id, c_id, -len(cell_sim['x']):, 0] = cell_sim['x']
+            data_batch_transformed[p_id, c_id, -len(cell_sim['y']):, 1] = cell_sim['y']
 
-    print(f'Samples with no cells visible: {n_cells_not_visible}/{len(data_raw)}')
-    return data
+    if n_cells_not_visible > 0:
+        print(f'Simulation with no cells visible: {n_cells_not_visible}/{len(data_batch)}')
+    return data_batch_transformed
 
 
 # %%
 
 presimulation_path = 'presimulations'
 n_val_data = 100
-data_dim = 50
+cells_in_population = 50
 n_params = len(obs_pars)
 batch_size = 32
 iterations_per_epoch = 100
@@ -169,7 +170,8 @@ epochs = 500
 print('gpu:', tf.config.list_physical_devices('GPU'))
 
 bayesflow_prior = Prior(batch_prior_fun=prior_fun, param_names=param_names)
-bayes_simulator = Simulator(batch_simulator_fun=partial(generate_population_data, data_dim=data_dim,
+bayes_simulator = Simulator(batch_simulator_fun=partial(generate_population_data,
+                                                        cells_in_population=cells_in_population,
                                                         max_length=max_sequence_length))
 generative_model = GenerativeModel(prior=bayesflow_prior, simulator=bayes_simulator,
                                    skip_test=True,  # once is enough, simulation takes time
@@ -213,26 +215,39 @@ def custom_loader(file_path):
 
 if os.path.exists(os.path.join(gp, 'validation_data.pickle')):
     with open(os.path.join(gp, 'validation_data.pickle'), 'rb') as f:
-        sim_data = pickle.load(f)
+        valid_data = pickle.load(f)
 else:
     print('Generating validation data')
-    sim_data = generative_model(n_val_data)
+    valid_data = generative_model(n_val_data)
     # save the data
     with open(os.path.join(gp, 'validation_data.pickle'), 'wb') as f:
-        pickle.dump(sim_data, f)
+        pickle.dump(valid_data, f)
 
-x_mean = np.nanmean(sim_data['sim_data'], axis=(0, 1, 2))
-x_std = np.nanstd(sim_data['sim_data'], axis=(0, 1, 2))
-p_mean = np.mean(sim_data['prior_draws'], axis=0)
-p_std = np.std(sim_data['prior_draws'], axis=0)
+x_mean = np.nanmean(valid_data['sim_data'], axis=(0, 1, 2))
+x_std = np.nanstd(valid_data['sim_data'], axis=(0, 1, 2))
+p_mean = np.mean(valid_data['prior_draws'], axis=0)
+p_std = np.std(valid_data['prior_draws'], axis=0)
 print('Mean and std of data:', x_mean, x_std)
 print('Mean and std of parameters:', p_mean, p_std)
+
+
+# compute the mean of the summary statistics
+summary_stats_list_ = [reduced_coordinates_to_sumstat(t) for t in valid_data['sim_data']]
+(_, _, _, _, _, ad_averg, MSD_averg,
+ TA_averg, VEL_averg, WT_averg) = compute_mean_summary_stats(summary_stats_list_, remove_nan=False)
+direct_conditions_ = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
+# replace inf with -1
+direct_conditions_[np.isinf(direct_conditions_)] = np.nan
+
+summary_valid_max = np.nanmax(direct_conditions_, axis=0)
+summary_valid_min = np.nanmin(direct_conditions_, axis=0)
+
 
 if not training:
     exit()
 
 
-def configurator(forward_dict: dict, remove_nans: bool) -> dict:
+def configurator(forward_dict: dict, remove_nans: bool = False, manual_summary: bool = False) -> dict:
     out_dict = {}
 
     # Extract data
@@ -243,6 +258,21 @@ def configurator(forward_dict: dict, remove_nans: bool) -> dict:
         non_nan_populations = np.isnan(x).sum(axis=(1, 2, 3)) - np.prod(x.shape[1:]) != 0
         # print(x.shape[0]-non_nan_populations.sum(), 'samples with only nan values in a row')
         x = x[non_nan_populations]
+
+    # compute manual summary statistics
+    if manual_summary:
+        summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in x]
+        # compute the mean of the summary statistics
+        (_, _, _, _, _,
+         ad_averg, MSD_averg,
+         TA_averg, VEL_averg, WT_averg) = compute_mean_summary_stats(summary_stats_list, remove_nan=False)
+        direct_conditions = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
+        # replace nan or inf with -1
+        direct_conditions[np.isnan(direct_conditions)] = -1
+        direct_conditions[np.isinf(direct_conditions)] = -1
+        # normalize statistics
+        direct_conditions = (direct_conditions - summary_valid_min) / (summary_valid_max - summary_valid_min)
+        out_dict['direct_conditions'] = direct_conditions.astype(np.float32)
 
     # Normalize data
     x = (x - x_mean) / x_std
@@ -354,6 +384,7 @@ use_attention = False
 use_bidirectional = False
 config_remove_nans = False
 summary_loss = None
+use_manual_summary = False
 if job_array_id == 0:
     checkpoint_path = 'amortizer-cell-migration-conv-6'
 elif job_array_id == 1:
@@ -378,6 +409,14 @@ elif job_array_id == 5:
     use_attention = True
     use_bidirectional = True
     summary_loss = 'MMD'
+elif job_array_id == 6:
+    checkpoint_path = 'amortizer-cell-migration-attention-7-bid-MMD-manual'
+    num_coupling_layers = 7
+    use_attention = True
+    use_bidirectional = True
+    summary_loss = 'MMD'
+    map_idx_sim = np.nan
+    use_manual_summary = True
 # elif checkpoint_path == 'amortizer-cell-migration-conv-7-nan':
 #     num_coupling_layers = 7
 #     num_dense = 3
@@ -421,7 +460,8 @@ amortizer = AmortizedPosterior(inference_net=inference_net, summary_net=summary_
 # build the trainer with networks and generative model
 max_to_keep = 17
 trainer = Trainer(amortizer=amortizer,
-                  configurator=partial(configurator, remove_nans=config_remove_nans),
+                  configurator=partial(configurator,
+                                       manual_summary=use_manual_summary),
                   generative_model=generative_model,
                   checkpoint_path=checkpoint_path,
                   skip_checks=True,  # once is enough, simulation takes time
@@ -442,7 +482,7 @@ else:
                                                early_stopping=True,
                                                early_stopping_args={'patience': max_to_keep-2},
                                                custom_loader=custom_loader,
-                                               validation_sims=sim_data)
+                                               validation_sims=valid_data)
     print('Training done!')
 
 # Check if training converged
