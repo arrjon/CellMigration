@@ -267,11 +267,11 @@ def configurator(forward_dict: dict, remove_nans: bool = False, manual_summary: 
          ad_averg, MSD_averg,
          TA_averg, VEL_averg, WT_averg) = compute_mean_summary_stats(summary_stats_list, remove_nan=False)
         direct_conditions = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
-        # replace nan or inf with -1
-        direct_conditions[np.isnan(direct_conditions)] = -1
-        direct_conditions[np.isinf(direct_conditions)] = -1
         # normalize statistics
         direct_conditions = (direct_conditions - summary_valid_min) / (summary_valid_max - summary_valid_min)
+        # replace nan or inf with -1
+        direct_conditions[np.isinf(direct_conditions)] = -1
+        direct_conditions[np.isnan(direct_conditions)] = -1
         out_dict['direct_conditions'] = direct_conditions.astype(np.float32)
 
     # Normalize data

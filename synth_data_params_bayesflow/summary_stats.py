@@ -171,11 +171,11 @@ def reduced_coordinates_to_sumstat(cell_population):
             ad_list.append(angle_degree(sim_dict))
             wt_list.append(mean_waiting_time(sim_dict))
     if not msd_list:
-        return {'msd_mean': [np.inf], 'msd_var': [np.inf],
-                'ta_mean': [np.inf], 'ta_var': [np.inf],
-                'v_mean': [np.inf], 'v_var': [np.inf],
-                'ad_mean': [np.inf], 'ad_var': [np.inf],
-                'wt_mean': [np.inf], 'wt_var': [np.inf]}
+        return {'msd_mean': [np.nan], 'msd_var': [np.nan],
+                'ta_mean': [np.nan], 'ta_var': [np.nan],
+                'v_mean': [np.nan], 'v_var': [np.nan],
+                'ad_mean': [np.nan], 'ad_var': [np.nan],
+                'wt_mean': [np.nan], 'wt_var': [np.nan]}
 
     # get the mean of list of lists with different lengths
     msd_mean = [np.mean(x) for x in msd_list]
