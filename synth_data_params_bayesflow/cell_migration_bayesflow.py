@@ -44,9 +44,8 @@ par_map = {
     'move.strength': './CellTypes/CellType/Constant[@symbol="move.strength"]',  # 0.21359842373064927*0.01
     # 'move.duration.mean': './CellTypes/CellType/Constant[@symbol="move.duration.mean"]',
     # 'move.duration.median': './CellTypes/CellType/Constant[@symbol="move.duration.median"]',
-    # 'move.duration.scale': './CellTypes/CellType/Constant[@symbol="move.duration.scale"]',
+    'move.duration.scale': './CellTypes/CellType/Constant[@symbol="move.duration.scale"]',
     'cell_nodes': './Global/Constant[@symbol="cell_nodes"]',
-    # 'd_env': './CellTypes/CellType/Property[@symbol="d_env"]',
 }
 
 model_path = gp + "/cell_movement_v23.xml"  # time step is 30sec
@@ -81,24 +80,23 @@ else:
 obs_pars = {
     'gradient_strength': 500000.,  # strength of the gradient of chemotaxis
     'move.strength': 1.,  # strength of directed motion
-    #'move.duration.mean': 100,  # mean waiting time of exponential distribution
-    #'move.duration.median': 972.33,  # median waiting time of gamma distribution (actually the mean)
-    # rand_gamma(move.duration.median/move.duration.scale,move.duration.scale)
-    #'move.duration.scale': 30, #96899.44860996476,
+    'move.duration.scale': 30.,  # median of exponential distribution
     'cell_nodes': 30.,  # volume of the cell
-    #'d_env': 0.01,  # influence of random motion vs biased direction (previous movement?)
-    # d_env * move.dir.x / move.dir.abs + (1-d_env)*cos(alpha), d_env * move.dir.y / move.dir.abs + (1-d_env)*sin(alpha) , 0
-}
+   }
 
 # define the parameter scale
 model.par_scale = "log10"
 # define parameters' limits
 obs_pars_log = {key: math.log10(val) for key, val in obs_pars.items()}
-limits = {key: (math.log10((10 ** -3) * val), math.log10((10 ** 3) * val)) for
-          key, val in obs_pars.items()}
+limits = {'gradient_strength': (math.log10(10 ** 4), math.log10(10 ** 12)),
+          'move.strength': (0, math.log10(10 ** 5)),
+          'move.duration.scale': (math.log10((10 ** -2) * 30), math.log10((10 ** 2) * 30)),
+          'cell_nodes': (math.log10(10 ** 0), math.log10(10 ** 2))}
 
-#limits['d_env'] = (math.log10(10 ** -5), math.log10(10 ** 0))
-limits['cell_nodes'] = (math.log10(10 ** 0), math.log10(10 ** 2))
+prior = pyabc.Distribution(**{key: pyabc.RV("uniform", lb, ub - lb)
+                              for key, (lb, ub) in limits.items()})
+param_names = list(obs_pars.keys())
+print(obs_pars)
 
 prior = pyabc.Distribution(**{key: pyabc.RV("uniform", lb, ub - lb)
                               for key, (lb, ub) in limits.items()})

@@ -116,29 +116,33 @@ def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optiona
     """
     x = data_dict['x']
     y = data_dict['y']
+    t = data_dict['t']
     obs_list = []
     x_cut = []
     y_cut = []
+    t_cut = []
     entered = False
-    for x_, y_ in zip(x, y):
+    for x_, y_, t_ in zip(x, y, t):
         if x_min < x_ < x_max and y_min < y_ < y_max:
             # if the cell is in the region
             entered = True
             x_cut.append(x_)
             y_cut.append(y_)
+            t_cut.append(t_)
         elif entered:
             # if the cell has left the region
             entered = False
             # append dicts to the lists
-            obs_list.append({'x': x_cut, 'y': y_cut})
+            obs_list.append({'x': x_cut, 'y': y_cut, 't': t_cut})
             # empty the lists
             x_cut = []
             y_cut = []
+            t_cut = []
         # if the cell is outside the region, do nothing
 
     # append the last cell if entered
     if entered and len(x_cut) > 0:
-        obs_list.append({'x': x_cut, 'y': y_cut})
+        obs_list.append({'x': x_cut, 'y': y_cut, 't': t_cut})
 
     if len(obs_list) == 0:
         return None
@@ -199,10 +203,10 @@ def reduced_coordinates_to_sumstat(cell_population):
     return sim
 
 
-def reduce_to_coordinates(sumstat,
-                          minimal_length=0,
-                          maximal_length=None,
-                          only_longest_traj_per_cell=True):
+def reduce_to_coordinates(sumstat: dict,
+                          minimal_length: int = 0,
+                          maximal_length: Optional[int] = None,
+                          only_longest_traj_per_cell: bool = True):
     sim_list = []
 
     # get cell ids
@@ -215,8 +219,8 @@ def reduce_to_coordinates(sumstat,
         # remove first element of x and y (there is waiting time, until we observe the cell)
         sim_dict = {
             'x': sumstat["cell.center.x"][cell_data_idx][1:],
-            'y': sumstat["cell.center.y"][cell_data_idx][1:]
-            # todo: maybe add time to the dict
+            'y': sumstat["cell.center.y"][cell_data_idx][1:],
+            't': sumstat["time"][cell_data_idx][1:]
         }
         # cut the region of interest, divide cells into multiple cells if they leave the region
         sim_dict_cut = cut_region(sim_dict,
@@ -232,7 +236,10 @@ def reduce_to_coordinates(sumstat,
     if minimal_length > 0:
         sim_list = [sim for sim in sim_list if len(sim['x']) > minimal_length]
     if maximal_length is not None:
-        sim_list = [{'x': sim['x'][:maximal_length], 'y': sim['y'][:maximal_length]} for sim in sim_list]
+        sim_list = [{'x': sim['x'][:maximal_length],
+                     'y': sim['y'][:maximal_length],
+                     't': np.array(sim['t'][:maximal_length])
+                     } for sim in sim_list]
     return sim_list
 
 
