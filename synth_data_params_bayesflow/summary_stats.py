@@ -7,7 +7,7 @@ import tidynamics  # to get sliding history stats in N*logN instead of N^2
 
 # defining the summary statistics functions
 def turning_angle(data_dict):
-    # compute the angle between two consecutive points
+    """Compute the angle between two consecutive points."""
     x = data_dict['x']
     y = data_dict['y']
     vx = np.diff(x)
@@ -19,7 +19,7 @@ def turning_angle(data_dict):
 
 
 def velocity(data_dict):
-    # compute the velocity of the cell
+    """Compute the velocity of the cell."""
     x = data_dict['x']
     y = data_dict['y']
     vx = np.diff(x)
@@ -29,14 +29,14 @@ def velocity(data_dict):
 
 
 def MSD(data_dict, x_name="x", y_name="y"):
-    # compute the mean square displacement of the cell
+    """Compute the mean square displacement of the cell."""
     msd = tidynamics.msd(
         np.column_stack([data_dict[x_name], data_dict[y_name]]))
     return msd
 
 
 def angle_degree(data_dict):
-    # compute the absolute angle between two consecutive points in degrees with respect to the x-axis
+    """Compute the absolute angle between two consecutive points in degrees with respect to the x-axis."""
     x = data_dict['x']
     y = data_dict['y']
     vx = np.diff(x)
@@ -48,6 +48,7 @@ def angle_degree(data_dict):
 
 
 def mean_waiting_time(data_dict, time_interval=30., threshold=np.pi/4):
+    """Compute the mean waiting time of the cell until it changes direction."""
     cell = np.stack([data_dict['x'], data_dict['y']], axis=1)
     time_steps = len(data_dict['x'])
     waiting_times = []
@@ -74,38 +75,6 @@ def mean_waiting_time(data_dict, time_interval=30., threshold=np.pi/4):
     else:
         mean_wt = np.nan  # If no direction change occurred
     return mean_wt
-
-
-def compute_mean_waiting_time(arr, time_interval=30, threshold=np.pi/4):
-    num_cells, time_steps, _ = arr.shape
-    mean_waiting_times = np.zeros(num_cells)
-
-    for cell in range(num_cells):
-        waiting_times = []
-        last_change = 0
-
-        # Compute initial direction
-        initial_direction = arr[cell, 1] - arr[cell, 0]
-        last_direction = np.arctan2(initial_direction[1], initial_direction[0])
-
-        for t in range(2, time_steps):
-            # Compute current direction
-            current_vector = arr[cell, t] - arr[cell, t-1]
-            current_direction = np.arctan2(current_vector[1], current_vector[0])
-
-            # Check if direction has changed
-            if abs(current_direction - last_direction) > threshold:  # 45 degree threshold
-                waiting_times.append((t-1) - last_change)
-                last_change = t-1
-
-            last_direction = current_direction
-
-        if waiting_times:
-            mean_waiting_times[cell] = np.mean(waiting_times) * time_interval
-        else:
-            mean_waiting_times[cell] = np.nan  # If no direction change occurred
-
-    return mean_waiting_times
 
 
 # my functions
@@ -154,7 +123,13 @@ def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optiona
     return obs_list
 
 
-def reduced_coordinates_to_sumstat(cell_population):
+def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
+    """
+    Compute the summary statistics of the reduced/visible coordinates of the cell population.
+
+    :param cell_population: 3D array of cell populations
+    :return: dictionary of summary statistics
+    """
     msd_list = []
     ta_list = []
     v_list = []
@@ -206,7 +181,16 @@ def reduced_coordinates_to_sumstat(cell_population):
 def reduce_to_coordinates(sumstat: dict,
                           minimal_length: int = 0,
                           maximal_length: Optional[int] = None,
-                          only_longest_traj_per_cell: bool = True):
+                          only_longest_traj_per_cell: bool = True) -> list[dict]:
+    """
+    Reduce the output of the model to the visible coordinates of the cells.
+
+    :param sumstat: output of Morpheus model
+    :param minimal_length: minimal length of the trajectory
+    :param maximal_length: maximal length of the trajectory
+    :param only_longest_traj_per_cell: if True, only the longest trajectory of each cell is returned
+    :return: list of dictionaries with x, y, t coordinates
+    """
     sim_list = []
 
     # get cell ids
@@ -248,8 +232,9 @@ def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = T
     Compute the mean summary statistics of the simulation list.
     First computes the mean of the statistics of each particle, then the mean of all particles in a population.
 
-    :param simulation_list: list of cell populations
-           remove_nan: remove nan and inf values from the averaged summary statistics of a population
+    :param
+        simulation_list: list of cell populations
+        remove_nan: remove nan and inf values from the averaged summary statistics of a population
     :return:
     """
     # put the 'ad' of all particles in one list
@@ -258,25 +243,25 @@ def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = T
         ad = simulation_list[i]['ad_mean']
         ad_mean.append([x for x in ad if not np.isnan(x) and not np.isinf(x)])
 
-    MSD_mean = []
+    msd_mean = []
     for i in range(len(simulation_list)):
         msd = simulation_list[i]['msd_mean']
-        MSD_mean.append([x for x in msd if not np.isnan(x) and not np.isinf(x)])
+        msd_mean.append([x for x in msd if not np.isnan(x) and not np.isinf(x)])
 
-    TA_mean = []
+    ta_mean = []
     for i in range(len(simulation_list)):
         ta = simulation_list[i]['ta_mean']
-        TA_mean.append([x for x in ta if not np.isnan(x) and not np.isinf(x)])
+        ta_mean.append([x for x in ta if not np.isnan(x) and not np.isinf(x)])
 
-    VEL_mean = []
+    vel_mean = []
     for i in range(len(simulation_list)):
         vel = simulation_list[i]['v_mean']
-        VEL_mean.append([x for x in vel if not np.isnan(x) and not np.isinf(x)])
+        vel_mean.append([x for x in vel if not np.isnan(x) and not np.isinf(x)])
 
-    WT_mean = []
+    wt_mean = []
     for i in range(len(simulation_list)):
         wt = simulation_list[i]['wt_mean']
-        WT_mean.append([x for x in wt if not np.isnan(x) and not np.isinf(x)])
+        wt_mean.append([x for x in wt if not np.isnan(x) and not np.isinf(x)])
 
     # get the average of ad of all particles
     ad_averg = []
@@ -286,33 +271,33 @@ def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = T
             ad_averg.append(ad)
     ad_averg = np.array(ad_averg)
 
-    MSD_averg = []
-    for i in range(len(MSD_mean)):
-        msd = np.mean(MSD_mean[i])
+    msd_averg = []
+    for i in range(len(msd_mean)):
+        msd = np.mean(msd_mean[i])
         if not remove_nan or (not np.isnan(msd) and not np.isinf(msd)):
-            MSD_averg.append(msd)
-    MSD_averg = np.array(MSD_averg)
+            msd_averg.append(msd)
+    msd_averg = np.array(msd_averg)
 
-    TA_averg = []
-    for i in range(len(TA_mean)):
-        ta = np.mean(TA_mean[i])
+    ta_averg = []
+    for i in range(len(ta_mean)):
+        ta = np.mean(ta_mean[i])
         if not remove_nan or (not np.isnan(ta) and not np.isinf(ta)):
-            TA_averg.append(ta)
-    TA_averg = np.array(TA_averg)
+            ta_averg.append(ta)
+    ta_averg = np.array(ta_averg)
 
-    VEL_averg = []
-    for i in range(len(VEL_mean)):
-        vel = np.mean(VEL_mean[i])
+    vel_averg = []
+    for i in range(len(vel_mean)):
+        vel = np.mean(vel_mean[i])
         if not remove_nan or (not np.isnan(vel) and not np.isinf(vel)):
-            VEL_averg.append(vel)
-    VEL_averg = np.array(VEL_averg)
+            vel_averg.append(vel)
+    vel_averg = np.array(vel_averg)
 
-    WT_averg = []
-    for i in range(len(WT_mean)):
-        wt = np.mean(WT_mean[i])
+    wt_averg = []
+    for i in range(len(wt_mean)):
+        wt = np.mean(wt_mean[i])
         if not remove_nan or (not np.isnan(wt) and not np.isinf(wt)):
-            WT_averg.append(wt)
-    WT_averg = np.array(WT_averg)
+            wt_averg.append(wt)
+    wt_averg = np.array(wt_averg)
 
-    return (ad_mean, MSD_mean, TA_mean, VEL_mean, WT_mean,
-            ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg)
+    return (ad_mean, msd_mean, ta_mean, vel_mean, wt_mean,
+            ad_averg, msd_averg, ta_averg, vel_averg, wt_averg)
