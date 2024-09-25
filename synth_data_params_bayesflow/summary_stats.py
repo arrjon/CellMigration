@@ -230,14 +230,13 @@ def reduce_to_coordinates(sumstat: dict,
 def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = True) -> tuple:
     """
     Compute the mean summary statistics of the simulation list.
-    First computes the mean of the statistics of each particle, then the mean of all particles in a population.
 
     :param
         simulation_list: list of cell populations
         remove_nan: remove nan and inf values from the averaged summary statistics of a population
     :return:
     """
-    # put the 'ad' of all particles in one list
+    # get the valid means of the summary statistics lists
     ad_mean = []
     for i in range(len(simulation_list)):
         ad = simulation_list[i]['ad_mean']
@@ -263,7 +262,7 @@ def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = T
         wt = simulation_list[i]['wt_mean']
         wt_mean.append([x for x in wt if not np.isnan(x) and not np.isinf(x)])
 
-    # get the average of ad of all particles
+    # compute the mean over all cells
     ad_averg = []
     for i in range(len(ad_mean)):
         ad = np.mean(ad_mean[i])
