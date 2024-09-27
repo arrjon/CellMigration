@@ -1,5 +1,4 @@
 # %%
-import math
 import os
 import pickle
 import sys
@@ -41,14 +40,12 @@ else:
 
 par_map = {
     'gradient_strength': './CellTypes/CellType/Constant[@symbol="gradient_strength"]',
-    'move.strength': './CellTypes/CellType/Constant[@symbol="move.strength"]',  # 0.21359842373064927*0.01
-    # 'move.duration.mean': './CellTypes/CellType/Constant[@symbol="move.duration.mean"]',
-    # 'move.duration.median': './CellTypes/CellType/Constant[@symbol="move.duration.median"]',
-    'move.duration.scale': './CellTypes/CellType/Constant[@symbol="move.duration.scale"]',
-    'cell_nodes': './Global/Constant[@symbol="cell_nodes"]',
+    'move.strength': './CellTypes/CellType/Constant[@symbol="move.strength"]',
+    'move.duration.mean': './CellTypes/CellType/Constant[@symbol="move.duration.mean"]',
+    'cell_nodes_real': './Global/Constant[@symbol="cell_nodes_real"]',
 }
 
-model_path = gp + "/cell_movement_v23.xml"  # time step is 30sec
+model_path = gp + "/cell_movement_v24.xml"  # time step is 30sec
 # defining the summary statistics function
 max_sequence_length = 120
 min_sequence_length = 0
@@ -61,7 +58,7 @@ sumstat = SummaryStatistics(sum_stat_calculator=partial(reduce_to_coordinates,
 if on_cluster:
     # define the model object
     model = morpheus_model.MorpheusModel(
-        model_path, par_map=par_map, par_scale="lin",
+        model_path, par_map=par_map, par_scale="log10",
         show_stdout=False, show_stderr=False,
         executable="ulimit -s unlimited; /home/jarruda_hpc/CellMigration/morpheus-2.3.7",
         clean_simulation=True,
@@ -71,36 +68,32 @@ if on_cluster:
 else:
     # define the model object
     model = morpheus_model.MorpheusModel(
-        model_path, par_map=par_map, par_scale="lin",
+        model_path, par_map=par_map, par_scale="log10",
         show_stdout=False, show_stderr=False,
         clean_simulation=True,
         raise_on_error=False, sumstat=sumstat)
 
 # parameter values used to generate the synthetic data
 obs_pars = {
-    'gradient_strength': 500000.,  # strength of the gradient of chemotaxis
-    'move.strength': 1.,  # strength of directed motion
-    'move.duration.scale': 30.,  # median of exponential distribution
-    'cell_nodes': 30.,  # volume of the cell
-   }
+    'gradient_strength': 100.,  # strength of the gradient of chemotaxis
+    'move.strength': 10.,  # strength of directed motion
+    'move.duration.mean': 0.1,  # mean of exponential distribution (1/seconds)
+    'cell_nodes_real': 50.,  # volume of the cell
+}
 
-# define the parameter scale
-model.par_scale = "log10"
 # define parameters' limits
-obs_pars_log = {key: math.log10(val) for key, val in obs_pars.items()}
-limits = {'gradient_strength': (math.log10(10 ** 4), math.log10(10 ** 12)),
-          'move.strength': (0, math.log10(10 ** 5)),
-          'move.duration.scale': (math.log10((10 ** -2) * 30), math.log10((10 ** 2) * 30)),
-          'cell_nodes': (math.log10(10 ** 0), math.log10(10 ** 2))}
+obs_pars_log = {key: np.log10(val) for key, val in obs_pars.items()}
+limits = {'gradient_strength': (1, 10000), #(10 ** 4, 10 ** 8),
+          'move.strength': (1, 100),
+          'move.duration.mean': (1e-4, 30), #(math.log10((10 ** -2) * 30), math.log10((10 ** 4))), # smallest time step in simulation 5
+          'cell_nodes_real': (1, 300)}
+limits_log = {key: (np.log10(val[0]), np.log10(val[1])) for key, val in limits.items()}
 
-prior = pyabc.Distribution(**{key: pyabc.RV("uniform", lb, ub - lb)
-                              for key, (lb, ub) in limits.items()})
+prior = pyabc.Distribution(**{key: pyabc.RV("uniform", lb, ub)
+                              for key, (lb, ub) in limits_log.items()})
 param_names = list(obs_pars.keys())
 print(obs_pars)
 
-prior = pyabc.Distribution(**{key: pyabc.RV("uniform", lb, ub - lb)
-                              for key, (lb, ub) in limits.items()})
-param_names = list(obs_pars.keys())
 # %%
 import tensorflow as tf
 from bayesflow.amortizers import AmortizedPosterior
@@ -228,11 +221,10 @@ p_std = np.std(valid_data['prior_draws'], axis=0)
 print('Mean and std of data:', x_mean, x_std)
 print('Mean and std of parameters:', p_mean, p_std)
 
-
 # compute the mean of the summary statistics
 summary_stats_list_ = [reduced_coordinates_to_sumstat(t) for t in valid_data['sim_data']]
-(_, _, _, _, _, ad_averg, MSD_averg,
- TA_averg, VEL_averg, WT_averg) = compute_mean_summary_stats(summary_stats_list_, remove_nan=False)
+(_, ad_averg, _, MSD_averg, _, TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list_,
+                                                                                                 remove_nan=False)
 direct_conditions_ = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
 # replace inf with -1
 direct_conditions_[np.isinf(direct_conditions_)] = np.nan
@@ -261,9 +253,8 @@ def configurator(forward_dict: dict, remove_nans: bool = False, manual_summary: 
     if manual_summary:
         summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in x]
         # compute the mean of the summary statistics
-        (_, _, _, _, _,
-         ad_averg, MSD_averg,
-         TA_averg, VEL_averg, WT_averg) = compute_mean_summary_stats(summary_stats_list, remove_nan=False)
+        (_, ad_averg, _, MSD_averg, _,
+         TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list, remove_nan=False)
         direct_conditions = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
         # normalize statistics
         direct_conditions = (direct_conditions - summary_valid_min) / (summary_valid_max - summary_valid_min)
@@ -310,10 +301,11 @@ class GroupSummaryNetwork(tf.keras.Model):
             summary_dim,
             num_conv_layers=2,
             rnn_units=128,
-            use_lstm=True,
-            bidirectional=False,
+            bidirectional=True,
             conv_settings=None,
             use_attention=False,
+            return_attention_weights=False,
+            use_GRU=True,
             **kwargs
     ):
         super().__init__(**kwargs)
@@ -321,18 +313,23 @@ class GroupSummaryNetwork(tf.keras.Model):
         if conv_settings is None:
             conv_settings = defaults.DEFAULT_SETTING_MULTI_CONV
 
-        self.conv = Sequential([MultiConv1D(conv_settings) for _ in range(num_conv_layers)])
+        conv = Sequential([MultiConv1D(conv_settings) for _ in range(num_conv_layers)])
+        self.group_conv = tf.keras.layers.TimeDistributed(conv)
         self.use_attention = use_attention
-
-        if use_lstm:
-            self.rnn = Bidirectional(LSTM(rnn_units, return_sequences=use_attention)) if bidirectional else LSTM(
-                rnn_units, return_sequences=use_attention)
-        else:
-            self.rnn = GRU(LSTM(rnn_units, return_sequences=use_attention)) if bidirectional \
-                else LSTM(rnn_units, return_sequences=use_attention)
+        self.return_attention_weights = return_attention_weights
+        self.pooling = tf.keras.layers.GlobalAveragePooling1D()
 
         if self.use_attention:
-            self.attention = tf.keras.layers.Attention()
+            self.attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=rnn_units)
+
+        if use_GRU:
+            rnn = Bidirectional(GRU(rnn_units, return_sequences=use_attention)) if bidirectional else GRU(rnn_units,
+                                                                                                          return_sequences=use_attention)
+        else:
+            rnn = Bidirectional(LSTM(rnn_units, return_sequences=use_attention)) if bidirectional else LSTM(rnn_units,
+                                                                                                            return_sequences=use_attention)
+        self.group_rnn = tf.keras.layers.TimeDistributed(rnn)
+
         self.out_layer = Dense(summary_dim, activation="linear")
         self.summary_dim = summary_dim
 
@@ -350,92 +347,66 @@ class GroupSummaryNetwork(tf.keras.Model):
         out : tf.Tensor
             Output of shape (batch_size, summary_dim)
         """
-        # iterate over groups
-        out_list = []  # list to store outputs of LSTM for each group
-        for g_i in range(x.shape[1]):
-            out = self.conv(x[:, g_i], **kwargs)  # (batch_size, n_time_steps, n_filters) -> default: filters=32
-            out = self.rnn(out, **kwargs)  # (batch_size, lstm_units)
-            # if attention is used, return full sequence (batch_size, n_time_steps, lstm_units)
-            # bidirectional LSTM returns 2*lstm_units
-            out_list.append(out)
+        # Apply the RNN to each group
+        out = self.group_conv(x, **kwargs)
+        out = self.group_rnn(out, **kwargs)  # (batch_size, n_groups, lstm_units)
+        # if attention is used, return full sequence (batch_size, n_groups, n_time_steps, lstm_units)
+        # bidirectional LSTM returns 2*lstm_units
+
         if self.use_attention:
-            # learn a query vector to attend over the groups, some groups might be more important
-            # this should be invariant to the order of the groups (depends on the learned attention mechanism)
-            out = tf.stack(out_list, axis=1)  # (batch_size, n_groups, n_time_steps, lstm_units)
-            query = tf.reduce_mean(out, axis=2)  # (batch_size, n_groups, lstm_units)
+            # learn a query vector to attend over the time points
+            query = tf.reduce_mean(out, axis=1)
             # Reshape query to match the required shape for attention
-            query = tf.expand_dims(query, axis=2)  # (batch_size, n_groups, 1, lstm_units)
-            out = self.attention([query, out], **kwargs)  # (batch_size, n_groups, 1, lstm_units)
-            out = tf.reduce_max(out, axis=1)  # (batch_size, 1, lstm_units)
-            out = tf.squeeze(out, axis=1)  # Remove the extra dimension (batch_size, lstm_units)
+            query = tf.expand_dims(query, axis=1)  # (batch_size, 1, n_time_steps, lstm_units)
+            if not self.return_attention_weights:
+                out = self.attention(query, out, **kwargs)  # (batch_size, 1, n_time_steps, lstm_units)
+            else:
+                out, attention_weights = self.attention(query, out, return_attention_scores=True, **kwargs)
+                attention_weights = tf.squeeze(attention_weights, axis=2)
+            out = tf.squeeze(out, axis=1)  # Remove the extra dimension (batch_size, n_time_steps, lstm_units)
+            out = self.pooling(out, **kwargs)  # (batch_size, 1, lstm_units)
         else:
-            # max pooling over groups, this totally invariants to the order of the groups
-            out = tf.reduce_max(out_list, axis=0)  # (batch_size, lstm_units)
+            # pooling over groups, this totally invariants to the order of the groups
+            out = self.pooling(out, **kwargs)  # (batch_size, lstm_units)
         # apply dense layer
         out = self.out_layer(out, **kwargs)  # (batch_size, summary_dim)
+
+        if self.use_attention and self.return_attention_weights:
+            return out, attention_weights
         return out
 
 
 num_coupling_layers = 6
 num_dense = 3
-use_attention = False
+use_attention = True
 use_bidirectional = False
-config_remove_nans = False
-summary_loss = None
+summary_loss = 'MMD'
 use_manual_summary = False
 if job_array_id == 0:
-    checkpoint_path = 'amortizer-cell-migration-conv-6'
-elif job_array_id == 1:
     checkpoint_path = 'amortizer-cell-migration-attention-6-bid'
-    use_attention = True
     use_bidirectional = True
-elif job_array_id == 2:
+elif job_array_id == 1:
     checkpoint_path = 'amortizer-cell-migration-conv-7'
     num_coupling_layers = 7
-elif job_array_id == 3:
+elif job_array_id == 2:
     checkpoint_path = 'amortizer-cell-migration-attention-7'
     num_coupling_layers = 7
-    use_attention = True
-elif job_array_id == 4:
+elif job_array_id == 3:
     checkpoint_path = 'amortizer-cell-migration-attention-7-bid'
     num_coupling_layers = 7
-    use_attention = True
     use_bidirectional = True
-elif job_array_id == 5:
-    checkpoint_path = 'amortizer-cell-migration-attention-7-bid-MMD'
+elif job_array_id == 4:
+    checkpoint_path = 'amortizer-cell-migration-attention-7-bid-manual'
     num_coupling_layers = 7
-    use_attention = True
     use_bidirectional = True
-    summary_loss = 'MMD'
-elif job_array_id == 6:
-    checkpoint_path = 'amortizer-cell-migration-attention-7-bid-MMD-manual'
-    num_coupling_layers = 7
-    use_attention = True
-    use_bidirectional = True
-    summary_loss = 'MMD'
     map_idx_sim = np.nan
     use_manual_summary = True
-# elif checkpoint_path == 'amortizer-cell-migration-conv-7-nan':
-#     num_coupling_layers = 7
-#     num_dense = 3
-#     config_remove_nans = True
-# elif checkpoint_path == 'amortizer-cell-migration-attention-7-nan':
-#     num_coupling_layers = 7
-#     num_dense = 3
-#     use_attention = True
-#     config_remove_nans = True
-# elif checkpoint_path == 'amortizer-cell-migration-attention-7-bid-nan':
-#     num_coupling_layers = 7
-#     num_dense = 3
-#     use_attention = True
-#     use_bidirectional = True
-#     config_remove_nans = True
 else:
     raise ValueError('Checkpoint path not found')
 print(checkpoint_path)
 
 summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
-                                  rnn_units=2 ** int(np.ceil(np.log2(max_sequence_length))),
+                                  rnn_units=32,
                                   use_attention=use_attention,
                                   bidirectional=use_bidirectional)
 inference_net = InvertibleNetwork(num_params=n_params,
@@ -498,12 +469,12 @@ print("Networks loaded from {}".format(new_checkpoint))
 
 # simulate test data
 test_params = np.log10(list(obs_pars.values()))
-if not os.path.exists('test_sim.npy'):
+if not os.path.exists(os.path.join(gp, 'test_sim.npy')):
     test_sim_full = bayes_simulator(test_params[np.newaxis])
     test_sim = test_sim_full['sim_data']
-    np.save('test_sim.npy', test_sim)
+    np.save(os.path.join(gp, 'test_sim.npy'), test_sim)
 else:
-    test_sim = np.load('test_sim.npy')
+    test_sim = np.load(os.path.join(gp, 'test_sim.npy'))
     test_sim_full = {'sim_data': test_sim}
 
 test_posterior_samples = amortizer.sample(trainer.configurator(test_sim_full), n_samples=100)

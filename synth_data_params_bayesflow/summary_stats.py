@@ -1,5 +1,5 @@
 import math
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import tidynamics  # to get sliding history stats in N*logN instead of N^2
@@ -123,6 +123,33 @@ def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optiona
     return obs_list
 
 
+def compute_mean(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
+    """
+    Compute the mean if x is a non-empty list.
+    Return x if it's a float/int.
+    Return np.nan if it's an empty list or unrecognized type.
+    """
+    if isinstance(x, (list, np.ndarray)):
+        return np.mean(x) if len(x) > 0 else np.nan
+    elif isinstance(x, (int, float)):
+        return x
+    else:
+        return np.nan
+
+def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
+    """
+    Compute the variance if x is a non-empty list.
+    Return x if it's a float/int.
+    Return np.nan if it's an empty list or unrecognized type.
+    """
+    if isinstance(x, (list, np.ndarray)):
+        return np.var(x) if len(x) > 0 else np.nan
+    elif isinstance(x, (int, float)):
+        return 0.0
+    else:
+        return np.nan
+
+
 def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
     """
     Compute the summary statistics of the reduced/visible coordinates of the cell population.
@@ -157,18 +184,18 @@ def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
                 'wt_mean': [np.nan], 'wt_var': [np.nan]}
 
     # get the mean of list of lists with different lengths
-    msd_mean = [np.mean(x) for x in msd_list]
-    ta_mean = [np.mean(x) for x in ta_list]
-    v_mean = [np.mean(x) for x in v_list]
-    ad_mean = [np.mean(x) for x in ad_list]
-    wt_mean = [np.mean(x) for x in wt_list]
+    msd_mean = [compute_mean(x) for x in msd_list]
+    ta_mean = [compute_mean(x) for x in ta_list]
+    v_mean = [compute_mean(x) for x in v_list]
+    ad_mean = [compute_mean(x)  for x in ad_list]
+    wt_mean = [compute_mean(x) for x in wt_list]
 
     # get the variance of list of lists with different lengths
-    msd_var = [np.var(x) for x in msd_list]
-    ta_var = [np.var(x) for x in ta_list]
-    v_var = [np.var(x) for x in v_list]
-    ad_var = [np.var(x) for x in ad_list]
-    wt_var = [np.var(x) for x in wt_list]
+    msd_var = [compute_var(x) for x in msd_list]
+    ta_var = [compute_var(x) for x in ta_list]
+    v_var = [compute_var(x) for x in v_list]
+    ad_var = [compute_var(x) for x in ad_list]
+    wt_var = [compute_var(x) for x in wt_list]
 
     sim = {'msd_mean': msd_mean, 'msd_var': msd_var,
            'ta_mean': ta_mean, 'ta_var': ta_var,
@@ -227,76 +254,34 @@ def reduce_to_coordinates(sumstat: dict,
     return sim_list
 
 
-def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = True) -> tuple:
+def clean_and_average(stat_list: list, remove_nan: bool):
+    """
+    Remove NaN and Inf from the list and compute the mean.
+    """
+    cleaned = [[x for x in stat if not np.isnan(x) and not np.isinf(x)] for stat in stat_list]
+    averaged = [np.mean(stat) if len(stat) > 0 else np.nan for stat in cleaned]
+    if remove_nan:
+        averaged = [x for x in averaged if not np.isnan(x) and not np.isinf(x)]
+    return cleaned, np.array(averaged)
+
+
+def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = True) -> list:
     """
     Compute the mean summary statistics of the simulation list.
 
-    :param
+    param
         simulation_list: list of cell populations
         remove_nan: remove nan and inf values from the averaged summary statistics of a population
     :return:
     """
-    # get the valid means of the summary statistics lists
-    ad_mean = []
-    for i in range(len(simulation_list)):
-        ad = simulation_list[i]['ad_mean']
-        ad_mean.append([x for x in ad if not np.isnan(x) and not np.isinf(x)])
 
-    msd_mean = []
-    for i in range(len(simulation_list)):
-        msd = simulation_list[i]['msd_mean']
-        msd_mean.append([x for x in msd if not np.isnan(x) and not np.isinf(x)])
+    # Extract the statistics from the simulations
+    stat_keys = ['ad_mean', 'msd_mean', 'ta_mean', 'v_mean', 'wt_mean']
+    result = []
 
-    ta_mean = []
-    for i in range(len(simulation_list)):
-        ta = simulation_list[i]['ta_mean']
-        ta_mean.append([x for x in ta if not np.isnan(x) and not np.isinf(x)])
+    for key in stat_keys:
+        stat_list = [sim[key] for sim in simulation_list]
+        cleaned, averaged = clean_and_average(stat_list, remove_nan)
+        result.extend([cleaned, averaged])
 
-    vel_mean = []
-    for i in range(len(simulation_list)):
-        vel = simulation_list[i]['v_mean']
-        vel_mean.append([x for x in vel if not np.isnan(x) and not np.isinf(x)])
-
-    wt_mean = []
-    for i in range(len(simulation_list)):
-        wt = simulation_list[i]['wt_mean']
-        wt_mean.append([x for x in wt if not np.isnan(x) and not np.isinf(x)])
-
-    # compute the mean over all cells
-    ad_averg = []
-    for i in range(len(ad_mean)):
-        ad = np.mean(ad_mean[i])
-        if not remove_nan or (not np.isnan(ad) and not np.isinf(ad)):
-            ad_averg.append(ad)
-    ad_averg = np.array(ad_averg)
-
-    msd_averg = []
-    for i in range(len(msd_mean)):
-        msd = np.mean(msd_mean[i])
-        if not remove_nan or (not np.isnan(msd) and not np.isinf(msd)):
-            msd_averg.append(msd)
-    msd_averg = np.array(msd_averg)
-
-    ta_averg = []
-    for i in range(len(ta_mean)):
-        ta = np.mean(ta_mean[i])
-        if not remove_nan or (not np.isnan(ta) and not np.isinf(ta)):
-            ta_averg.append(ta)
-    ta_averg = np.array(ta_averg)
-
-    vel_averg = []
-    for i in range(len(vel_mean)):
-        vel = np.mean(vel_mean[i])
-        if not remove_nan or (not np.isnan(vel) and not np.isinf(vel)):
-            vel_averg.append(vel)
-    vel_averg = np.array(vel_averg)
-
-    wt_averg = []
-    for i in range(len(wt_mean)):
-        wt = np.mean(wt_mean[i])
-        if not remove_nan or (not np.isnan(wt) and not np.isinf(wt)):
-            wt_averg.append(wt)
-    wt_averg = np.array(wt_averg)
-
-    return (ad_mean, msd_mean, ta_mean, vel_mean, wt_mean,
-            ad_averg, msd_averg, ta_averg, vel_averg, wt_averg)
+    return result
