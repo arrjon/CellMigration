@@ -415,7 +415,7 @@ limits = {'gradient_strength': (1, 10000), #(10 ** 4, 10 ** 8),
 limits_log = {key: (np.log10(val[0]), np.log10(val[1])) for key, val in limits.items()}
 
 
-prior = pyabc.Distribution(**{key: pyabc.RV("uniform", lb, ub)
+prior = pyabc.Distribution(**{key: pyabc.RV("uniform", loc=lb, scale=ub-lb)
                               for key, (lb, ub) in limits_log.items()})
 param_names = list(obs_pars.keys())
 print(obs_pars)
@@ -661,27 +661,27 @@ def load_model(model_id):
     num_coupling_layers = 6
     num_dense = 3
     use_attention = True
-    use_bidirectional = False
+    use_bidirectional = True
     summary_loss = 'MMD'
     use_manual_summary = False
     if model_id == 0:
-        checkpoint_path = 'amortizer-cell-migration-attention-6-bid'
-        use_bidirectional = True
+        checkpoint_path = 'amortizer-cell-migration-attention-6'
     elif model_id == 1:
-        checkpoint_path = 'amortizer-cell-migration-conv-7'
-        num_coupling_layers = 7
+        checkpoint_path = 'amortizer-cell-migration-attention-6-manual'
+        use_manual_summary = True
     elif model_id == 2:
         checkpoint_path = 'amortizer-cell-migration-attention-7'
         num_coupling_layers = 7
     elif model_id == 3:
-        checkpoint_path = 'amortizer-cell-migration-attention-7-bid'
+        checkpoint_path = 'amortizer-cell-migration-attention-7-manual'
         num_coupling_layers = 7
-        use_bidirectional = True
+        use_manual_summary = True
     elif model_id == 4:
-        checkpoint_path = 'amortizer-cell-migration-attention-7-bid-manual'
-        num_coupling_layers = 7
-        use_bidirectional = True
-        map_idx_sim = np.nan
+        checkpoint_path = 'amortizer-cell-migration-attention-8'
+        num_coupling_layers = 8
+    elif model_id == 5:
+        checkpoint_path = 'amortizer-cell-migration-attention-8-manual'
+        num_coupling_layers = 8
         use_manual_summary = True
     else:
         raise ValueError('Checkpoint path not found')

@@ -8,4 +8,5 @@
 /synth_data_params_4_wass_var/
 /synth_data_params_4_wass_var_50cell/
 /synth_data_params_bayesflow/amortizer-*
+/synth_data_params_bayesflow/old_networks
 !synth_data_params_bayesflow/amortizer-cell-migration-attention-7-bid-MMD-manual

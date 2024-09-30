@@ -6,8 +6,10 @@ from functools import partial
 
 import numpy as np
 import pyabc
+import scipy.stats as stats
 from fitmulticell import model as morpheus_model
 from fitmulticell.sumstat import SummaryStatistics
+from matplotlib import pyplot as plt
 
 from summary_stats import reduce_to_coordinates, reduced_coordinates_to_sumstat, compute_mean_summary_stats
 
@@ -89,13 +91,15 @@ limits = {'gradient_strength': (1, 10000), #(10 ** 4, 10 ** 8),
           'cell_nodes_real': (1, 300)}
 limits_log = {key: (np.log10(val[0]), np.log10(val[1])) for key, val in limits.items()}
 
-prior = pyabc.Distribution(**{key: pyabc.RV("uniform", lb, ub)
+prior = pyabc.Distribution(**{key: pyabc.RV("uniform", loc=lb, scale=ub-lb)
                               for key, (lb, ub) in limits_log.items()})
 param_names = list(obs_pars.keys())
+log_param_names = [f'log_{p}' for p in param_names]
 print(obs_pars)
 
 # %%
 import tensorflow as tf
+import bayesflow as bf
 from bayesflow.amortizers import AmortizedPosterior
 from bayesflow.networks import InvertibleNetwork
 from bayesflow.helper_networks import MultiConv1D
@@ -237,17 +241,11 @@ if not training:
     exit()
 
 
-def configurator(forward_dict: dict, remove_nans: bool = False, manual_summary: bool = False) -> dict:
+def configurator(forward_dict: dict, manual_summary: bool = False) -> dict:
     out_dict = {}
 
     # Extract data
     x = forward_dict["sim_data"]
-
-    if remove_nans:
-        # check if simulation with only nan values in a row
-        non_nan_populations = np.isnan(x).sum(axis=(1, 2, 3)) - np.prod(x.shape[1:]) != 0
-        # print(x.shape[0]-non_nan_populations.sum(), 'samples with only nan values in a row')
-        x = x[non_nan_populations]
 
     # compute manual summary statistics
     if manual_summary:
@@ -282,8 +280,6 @@ def configurator(forward_dict: dict, remove_nans: bool = False, manual_summary: 
         forward_dict["prior_draws"] = forward_dict["parameters"]
     if 'prior_draws' in forward_dict.keys():
         params = forward_dict["prior_draws"]
-        if remove_nans:
-            params = params[non_nan_populations]
         params = (params - p_mean) / p_std
         out_dict['parameters'] = params.astype(np.float32)
     return out_dict
@@ -379,28 +375,34 @@ class GroupSummaryNetwork(tf.keras.Model):
 num_coupling_layers = 6
 num_dense = 3
 use_attention = True
-use_bidirectional = False
+use_bidirectional = True
 summary_loss = 'MMD'
 use_manual_summary = False
 if job_array_id == 0:
-    checkpoint_path = 'amortizer-cell-migration-attention-6-bid'
-    use_bidirectional = True
+    checkpoint_path = 'amortizer-cell-migration-attention-6'
+    map_idx_sim = np.nan
 elif job_array_id == 1:
-    checkpoint_path = 'amortizer-cell-migration-conv-7'
-    num_coupling_layers = 7
+    checkpoint_path = 'amortizer-cell-migration-attention-6-manual'
+    use_manual_summary = True
+    map_idx_sim = np.nan
 elif job_array_id == 2:
     checkpoint_path = 'amortizer-cell-migration-attention-7'
     num_coupling_layers = 7
-elif job_array_id == 3:
-    checkpoint_path = 'amortizer-cell-migration-attention-7-bid'
-    num_coupling_layers = 7
-    use_bidirectional = True
-elif job_array_id == 4:
-    checkpoint_path = 'amortizer-cell-migration-attention-7-bid-manual'
-    num_coupling_layers = 7
-    use_bidirectional = True
     map_idx_sim = np.nan
+elif job_array_id == 3:
+    checkpoint_path = 'amortizer-cell-migration-attention-7-manual'
+    num_coupling_layers = 7
     use_manual_summary = True
+    map_idx_sim = np.nan
+elif job_array_id == 4:
+    checkpoint_path = 'amortizer-cell-migration-attention-8'
+    num_coupling_layers = 8
+    map_idx_sim = np.nan
+elif job_array_id == 5:
+    checkpoint_path = 'amortizer-cell-migration-attention-8-manual'
+    num_coupling_layers = 8
+    use_manual_summary = True
+    map_idx_sim = np.nan
 else:
     raise ValueError('Checkpoint path not found')
 print(checkpoint_path)
@@ -465,7 +467,24 @@ recent_losses = history['val_losses'].iloc[-max_to_keep:]
 best_valid_epoch = recent_losses['Loss'].idxmin() + 1  # checkpoints are 1-based indexed
 new_checkpoint = trainer.manager.latest_checkpoint.rsplit('-', 1)[0] + f'-{best_valid_epoch}'
 trainer.checkpoint.restore(new_checkpoint)
-print("Networks loaded from {}".format(new_checkpoint))
+print(f"Networks loaded from {new_checkpoint} with {recent_losses['Loss'][best_valid_epoch-1]} validation loss")
+
+# diagnostic plots
+valid_data_config = trainer.configurator(valid_data)
+
+posterior_samples = amortizer.sample(valid_data_config, n_samples=100)
+posterior_samples = posterior_samples * p_std + p_mean
+prior_draws = valid_data_config["parameters"] * p_std + p_mean
+
+_ = bf.diagnostics.plot_sbc_ecdf(posterior_samples, prior_draws, difference=True, param_names=log_param_names)
+plt.savefig(f'{checkpoint_path}/sbc_ecdf.png')
+
+posterior_samples = amortizer.sample(valid_data_config, n_samples=1000)
+posterior_samples = posterior_samples * p_std + p_mean
+
+_ = bf.diagnostics.plot_recovery(posterior_samples, prior_draws, param_names=log_param_names)
+plt.savefig(f'{checkpoint_path}/recovery.png')
+
 
 # simulate test data
 test_params = np.log10(list(obs_pars.values()))
@@ -498,3 +517,120 @@ if not os.path.exists(checkpoint_path + '/posterior_sim.npy'):
     np.save(checkpoint_path + '/posterior_sim.npy', posterior_sim)
 
     print('map_sim', map_idx, log_prob[map_idx], test_posterior_samples[map_idx])
+else:
+    posterior_sim = np.load(checkpoint_path+'/posterior_sim.npy')
+    map_sim = posterior_sim[map_idx_sim]
+
+# compute the summary statistics
+synthetic_summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in test_sim]  # should be only one population
+simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim) for pop_sim in posterior_sim]
+
+# compute the mean of the summary statistics
+(ad_mean_synth, ad_mean_synth_averg,
+ MSD_mean_synth, MSD_mean_synth_averg,
+ TA_mean_synth, TA_mean_synth_averg,
+ VEL_mean_synth, VEL_mean_synth_averg,
+ WT_mean_synth, WT_mean_synth_averg) = compute_mean_summary_stats(synthetic_summary_stats_list)
+(ad_mean_synth_sim, ad_mean_synth_sim_averg,
+ MSD_mean_synth_sim, MSD_mean_synth_sim_averg,
+ TA_mean_synth_sim, TA_mean_synth_sim_averg,
+ VEL_mean_synth_sim, VEL_mean_synth_sim_averg,
+ WT_mean_synth_sim, WT_mean_synth_sim_averg) = compute_mean_summary_stats(simulation_synth_summary_stats_list)
+
+# plot the summary statistics
+fig, ax = plt.subplots(nrows=2, ncols=5, sharex=True, sharey='col', tight_layout=True, figsize=(12, 5))
+# Perform the Kolmogorov-Smirnov test
+ks_statistic, p_value = stats.ks_2samp(ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0])
+print(f"Angle Degree KS Statistic: {ks_statistic}")
+print(f"Angle Degree P-value: {p_value}, {p_value < 0.05}: different distributions")
+ax[0, 0].violinplot([ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0]], showmeans=True)
+if p_value < 0.05:
+    ax[0, 0].set_title(f'Angle Degree\n(Different)')
+else:
+    ax[0, 0].set_title(f'Angle Degree\n(Same)')
+ax[0, 0].set_ylabel(f'Angle Degree (degrees)\nMean per Cell')
+ax[1, 0].violinplot([ad_mean_synth_sim_averg, ad_mean_synth_averg], showmeans=True)
+ax[1, 0].set_ylabel(f'Angle Degree (degrees)\nPopulation Mean')
+ax[1, 0].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+
+ks_statistic, p_value = stats.ks_2samp(MSD_mean_synth_sim_averg[map_idx_sim], MSD_mean_synth[0])
+print(f"MSD KS Statistic: {ks_statistic}")
+print(f"MSD P-value: {p_value}, {p_value < 0.05}: different distributions")
+ax[0, 1].violinplot([MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0]], showmeans=True)
+if p_value < 0.05:
+    ax[0, 1].set_title(f'Mean Squared Displacement\n(Different)')
+else:
+    ax[0, 1].set_title(f'Mean Squared Displacement\n(Same)')
+ax[0, 1].set_ylabel(f'MSD\nMean per Cell')
+ax[1, 1].violinplot([MSD_mean_synth_sim_averg, MSD_mean_synth_averg], showmeans=True)
+ax[1, 1].set_ylabel(f'MSD\nPopulation Mean')
+ax[1, 1].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+
+ks_statistic, p_value = stats.ks_2samp(TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0])
+print(f"Turning Angle KS Statistic: {ks_statistic}")
+print(f"Turning Angle P-value: {p_value}, {p_value < 0.05}: different distributions")
+ax[0, 2].violinplot([TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0]], showmeans=True)
+if p_value < 0.05:
+    ax[0, 2].set_title(f'Turning Angle\n(Different)')
+else:
+    ax[0, 2].set_title(f'Turning Angle\n(Same)')
+ax[0, 2].set_ylabel(f'Turning Angle (radians)\nMean per Cell')
+ax[1, 2].violinplot([TA_mean_synth_sim_averg, TA_mean_synth_averg], showmeans=True)
+ax[1, 2].set_ylabel(f'Turning Angle (radians)\nPopulation Mean')
+ax[1, 2].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+
+ks_statistic, p_value = stats.ks_2samp(VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0])
+print(f"Velocity KS Statistic: {ks_statistic}")
+print(f"Velocity P-value: {p_value}, {p_value < 0.05}: different distributions")
+ax[0, 3].violinplot([VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0]], showmeans=True)
+if p_value < 0.05:
+    ax[0, 3].set_title(f'Velocity\n(Different)')
+else:
+    ax[0, 3].set_title(f'Velocity\n(Same)')
+ax[0, 3].set_ylabel(f'Velocity\nMean per Cell')
+ax[1, 3].violinplot([VEL_mean_synth_sim_averg, VEL_mean_synth_averg], showmeans=True)
+ax[1, 3].set_ylabel(f'Velocity\nPopulation Mean')
+ax[1, 3].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+
+ks_statistic, p_value = stats.ks_2samp(WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0])
+print(f"Waiting Time KS Statistic: {ks_statistic}")
+print(f"Waiting Time P-value: {p_value}, {p_value < 0.05}: different distributions")
+ax[0, 4].violinplot([WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0]], showmeans=True)
+if p_value < 0.05:
+    ax[0, 4].set_title(f'Waiting Time\n(Different)')
+else:
+    ax[0, 4].set_title(f'Waiting Time\n(Same)')
+ax[0, 4].set_ylabel(f'Waiting Time (sec)\nMean per Cell')
+ax[1, 4].violinplot([WT_mean_synth_sim_averg, WT_mean_synth_averg], showmeans=True)
+ax[1, 4].set_ylabel(f'Waiting Time (sec)\nPopulation Mean')
+ax[1, 4].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+plt.savefig(checkpoint_path+'/Summary Stats.png')
+plt.show()
+
+# Wasserstein distance
+wasserstein_distance = stats.wasserstein_distance(ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0])
+wasserstein_distance += stats.wasserstein_distance(MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0])
+wasserstein_distance += stats.wasserstein_distance(TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0])
+wasserstein_distance += stats.wasserstein_distance(VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0])
+wasserstein_distance += stats.wasserstein_distance(WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0])
+print(f"Wasserstein distance: {wasserstein_distance}")
+
+# plot the simulations or the MAP
+plt.plot(map_sim[0, :, 0], map_sim[0, :, 1], 'b', label='MAP Simulated Trajectories', alpha=1)
+for cell_id in range(1, cells_in_population):
+    plt.plot(map_sim[cell_id, :, 0], map_sim[cell_id, :, 1], 'b')
+
+# plot the synthetic data
+plt.plot(test_sim[0][0, :, 0], test_sim[0][0, :, 1], 'r', label='Synthetic Trajectories', alpha=1)
+for cell_id in range(1, cells_in_population):
+    plt.plot(test_sim[0][cell_id, :, 0], test_sim[0][cell_id, :, 1], 'r')
+
+plt.xlabel('x')
+plt.ylabel('y')
+plt.legend()
+plt.savefig(checkpoint_path+'/Simulations.png')
+plt.show()
+
+print('Map idx:', map_idx)
+print(f"Validation loss: {recent_losses['Loss'][best_valid_epoch-1]}")
+print(f"Wasserstein distance: {wasserstein_distance}")
