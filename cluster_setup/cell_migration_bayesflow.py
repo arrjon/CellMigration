@@ -517,6 +517,7 @@ if not os.path.exists(checkpoint_path + '/posterior_sim.npy'):
     np.save(checkpoint_path + '/posterior_sim.npy', posterior_sim)
 
     print('map_sim', map_idx, log_prob[map_idx], test_posterior_samples[map_idx])
+    map_idx_sim = map_idx
 else:
     posterior_sim = np.load(checkpoint_path+'/posterior_sim.npy')
     map_sim = posterior_sim[map_idx_sim]
