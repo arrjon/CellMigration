@@ -538,74 +538,56 @@ simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim) f
  VEL_mean_synth_sim, VEL_mean_synth_sim_averg,
  WT_mean_synth_sim, WT_mean_synth_sim_averg) = compute_mean_summary_stats(simulation_synth_summary_stats_list)
 
-# plot the summary statistics
-fig, ax = plt.subplots(nrows=2, ncols=5, sharex=True, sharey='col', tight_layout=True, figsize=(12, 5))
-# Perform the Kolmogorov-Smirnov test
-ks_statistic, p_value = stats.ks_2samp(ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0])
-print(f"Angle Degree KS Statistic: {ks_statistic}")
-print(f"Angle Degree P-value: {p_value}, {p_value < 0.05}: different distributions")
-ax[0, 0].violinplot([ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0]], showmeans=True)
-if p_value < 0.05:
-    ax[0, 0].set_title(f'Angle Degree\n(Different)')
-else:
-    ax[0, 0].set_title(f'Angle Degree\n(Same)')
-ax[0, 0].set_ylabel(f'Angle Degree (degrees)\nMean per Cell')
-ax[1, 0].violinplot([ad_mean_synth_sim_averg, ad_mean_synth_averg], showmeans=True)
-ax[1, 0].set_ylabel(f'Angle Degree (degrees)\nPopulation Mean')
-ax[1, 0].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+# plot summary statistics
+fig, ax = plt.subplots(nrows=1, ncols=5, tight_layout=True, figsize=(12, 5))
+alpha = 0.05
+colors = ['#1f77b4', '#ff7f0e']  # Blue for non-significant, orange for significant
 
-ks_statistic, p_value = stats.ks_2samp(MSD_mean_synth_sim_averg[map_idx_sim], MSD_mean_synth[0])
-print(f"MSD KS Statistic: {ks_statistic}")
-print(f"MSD P-value: {p_value}, {p_value < 0.05}: different distributions")
-ax[0, 1].violinplot([MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0]], showmeans=True)
-if p_value < 0.05:
-    ax[0, 1].set_title(f'Mean Squared Displacement\n(Different)')
-else:
-    ax[0, 1].set_title(f'Mean Squared Displacement\n(Same)')
-ax[0, 1].set_ylabel(f'MSD\nMean per Cell')
-ax[1, 1].violinplot([MSD_mean_synth_sim_averg, MSD_mean_synth_averg], showmeans=True)
-ax[1, 1].set_ylabel(f'MSD\nPopulation Mean')
-ax[1, 1].set_xticks([1, 2], ['Simulation', 'Synthetic'])
 
-ks_statistic, p_value = stats.ks_2samp(TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0])
-print(f"Turning Angle KS Statistic: {ks_statistic}")
-print(f"Turning Angle P-value: {p_value}, {p_value < 0.05}: different distributions")
-ax[0, 2].violinplot([TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0]], showmeans=True)
-if p_value < 0.05:
-    ax[0, 2].set_title(f'Turning Angle\n(Different)')
-else:
-    ax[0, 2].set_title(f'Turning Angle\n(Same)')
-ax[0, 2].set_ylabel(f'Turning Angle (radians)\nMean per Cell')
-ax[1, 2].violinplot([TA_mean_synth_sim_averg, TA_mean_synth_averg], showmeans=True)
-ax[1, 2].set_ylabel(f'Turning Angle (radians)\nPopulation Mean')
-ax[1, 2].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+def plot_violin(ax, data, label, ylabel):
+    n_sim_plots = len(data) - 2
 
-ks_statistic, p_value = stats.ks_2samp(VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0])
-print(f"Velocity KS Statistic: {ks_statistic}")
-print(f"Velocity P-value: {p_value}, {p_value < 0.05}: different distributions")
-ax[0, 3].violinplot([VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0]], showmeans=True)
-if p_value < 0.05:
-    ax[0, 3].set_title(f'Velocity\n(Different)')
-else:
-    ax[0, 3].set_title(f'Velocity\n(Same)')
-ax[0, 3].set_ylabel(f'Velocity\nMean per Cell')
-ax[1, 3].violinplot([VEL_mean_synth_sim_averg, VEL_mean_synth_averg], showmeans=True)
-ax[1, 3].set_ylabel(f'Velocity\nPopulation Mean')
-ax[1, 3].set_xticks([1, 2], ['Simulation', 'Synthetic'])
+    plot = ax.violinplot(data, showmedians=True, showextrema=False)
+    p_values = []
+    for i, pc in enumerate(plot['bodies']):
+        a_test = stats.anderson_ksamp((data[0], data[i]), method=stats.PermutationMethod())
+        p_values.append(a_test.pvalue)
+        color = colors[1] if a_test.pvalue < alpha else colors[0]
+        pc.set_facecolor(color)
+        pc.set_edgecolor('black')
+        pc.set_alpha(0.8)
 
-ks_statistic, p_value = stats.ks_2samp(WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0])
-print(f"Waiting Time KS Statistic: {ks_statistic}")
-print(f"Waiting Time P-value: {p_value}, {p_value < 0.05}: different distributions")
-ax[0, 4].violinplot([WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0]], showmeans=True)
-if p_value < 0.05:
-    ax[0, 4].set_title(f'Waiting Time\n(Different)')
-else:
-    ax[0, 4].set_title(f'Waiting Time\n(Same)')
-ax[0, 4].set_ylabel(f'Waiting Time (sec)\nMean per Cell')
-ax[1, 4].violinplot([WT_mean_synth_sim_averg, WT_mean_synth_averg], showmeans=True)
-ax[1, 4].set_ylabel(f'Waiting Time (sec)\nPopulation Mean')
-ax[1, 4].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-plt.savefig(checkpoint_path+'/Summary Stats.png')
+    ax.set_xticks(np.arange(n_sim_plots + 2) + 1, ['Data', 'MAP-Simulation'] + ['Simulation'] * n_sim_plots,
+                  rotation=90)
+    ax.set_ylabel(ylabel)
+    if np.sum(np.array(p_values) < alpha) > (len(data) - 1) // 2:
+        ax.set_title(f'{label}\n(Statistically Different)')
+    else:
+        ax.set_title(f'{label}\n')
+
+
+# Perform the Anderson-Darling k-sample test and plot for each statistic
+# Angle Degree
+plot_violin(ax[0], [ad_mean_synth[0], ad_mean_synth_sim[map_idx_sim]] + [ad_mean_synth_sim[i] for i in range(5)],
+            'Angle Degree', 'Angle Degree (degrees)\nMean per Cell')
+
+# Mean Squared Displacement (MSD)
+plot_violin(ax[1], [MSD_mean_synth[0], MSD_mean_synth_sim[map_idx_sim]] + [MSD_mean_synth_sim[i] for i in range(5)],
+            'Mean Squared Displacement', 'MSD\nMean per Cell')
+
+# Turning Angle
+plot_violin(ax[2], [TA_mean_synth[0], TA_mean_synth_sim[map_idx_sim]] + [TA_mean_synth_sim[i] for i in range(5)],
+            'Turning Angle', 'Turning Angle (radians)\nMean per Cell')
+
+# Velocity
+plot_violin(ax[3], [VEL_mean_synth[0], VEL_mean_synth_sim[map_idx_sim]] + [VEL_mean_synth_sim[i] for i in range(5)],
+            'Velocity', 'Velocity\nMean per Cell')
+
+# Waiting Time
+plot_violin(ax[4], [WT_mean_synth[0], WT_mean_synth_sim[map_idx_sim]] + [WT_mean_synth_sim[i] for i in range(5)],
+            'Waiting Time', 'Waiting Time (sec)\nMean per Cell')
+
+plt.savefig(f'{checkpoint_path}/Summary Stats.png')
 plt.show()
 
 # Wasserstein distance
