@@ -452,7 +452,7 @@ if run_old_sumstats:
     history = abc.new("sqlite:///" + db_path, make_sumstat_dict(test_sim))
 
     #start the abc fitting
-    abc.run(min_acceptance_rate=1e-2, max_nr_populations=30)
+    abc.run(min_acceptance_rate=1e-2, max_total_nr_simulations=32000)
     print('Done!')
     exit()
 
@@ -487,17 +487,11 @@ direct_conditions_[np.isinf(direct_conditions_)] = np.nan
 summary_valid_max = np.nanmax(direct_conditions_, axis=0)
 summary_valid_min = np.nanmin(direct_conditions_, axis=0)
 #%%
-def configurator(forward_dict: dict, remove_nans: bool = False, manual_summary: bool = False) -> dict:
+def configurator(forward_dict: dict, manual_summary: bool = False) -> dict:
     out_dict = {}
 
     # Extract data
     x = forward_dict["sim_data"]
-
-    if remove_nans:
-        # check if simulation with only nan values in a row
-        non_nan_populations = np.isnan(x).sum(axis=(1, 2, 3)) - np.prod(x.shape[1:]) != 0
-        # print(x.shape[0]-non_nan_populations.sum(), 'samples with only nan values in a row')
-        x = x[non_nan_populations]
 
     # compute manual summary statistics
     if manual_summary:
@@ -532,8 +526,6 @@ def configurator(forward_dict: dict, remove_nans: bool = False, manual_summary: 
         forward_dict["prior_draws"] = forward_dict["parameters"]
     if 'prior_draws' in forward_dict.keys():
         params = forward_dict["prior_draws"]
-        if remove_nans:
-            params = params[non_nan_populations]
         params = (params - p_mean) / p_std
         out_dict['parameters'] = params.astype(np.float32)
     return out_dict
@@ -738,7 +730,7 @@ def load_model(model_id):
     
     return summary_net, use_manual_summary
 #%%
-_ = load_model(0)
+_ = load_model(5)
 
 
 #%%
@@ -752,7 +744,7 @@ def make_sumstat_dict_nn(
         key = list(data.keys())[0]
         data = data[key]
         
-    summary_nn, manual_summary = load_model(0)
+    summary_nn, manual_summary = load_model(5)
     
     # configures the input for the network
     config_input = config_map({"sim_data": data}, manual_summary=manual_summary)
@@ -796,11 +788,10 @@ abc = pyabc.ABCSMC(model_nn, prior, # here we use now the Euclidean distance
                    population_size=population_size,
                    summary_statistics=sumstats_nn,
                    sampler=redis_sampler)
-#db_path = os.path.join(tempfile.gettempdir(), "test.db")
-db_path = os.path.join(gp, "synthetic_test_new_sumstats.db")
+db_path = os.path.join(gp, "synthetic_test_nn_sumstats.db")
 history = abc.new("sqlite:///" + db_path, sumstats_nn(test_sim))
 
 #start the abc fitting
-abc.run(min_acceptance_rate=1e-2, max_nr_populations=30)
+abc.run(min_acceptance_rate=1e-2, max_total_nr_simulations=32000)
 #%%
 print('Done!')

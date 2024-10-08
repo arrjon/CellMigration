@@ -158,7 +158,7 @@ cells_in_population = 50
 n_params = len(obs_pars)
 batch_size = 32
 iterations_per_epoch = 100
-# 4000 batches to be generated, 40 epochs until the batch is used again
+# 1000 batches to be generated, 10 epochs until the batch is used again -> 32.000 simulations
 epochs = 500
 
 # check if gpu is available
