@@ -23,9 +23,6 @@ on_cluster = True
 population_size = 1000
 run_old_sumstats = True
 
-if job_array_id == 1:
-    run_old_sumstats = False
-
 parser = argparse.ArgumentParser(description='Parse necessary arguments')
 parser.add_argument('-pt', '--port', type=str, default="50004",
                     help='Which port should be use?')
