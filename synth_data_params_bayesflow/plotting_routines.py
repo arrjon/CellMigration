@@ -1,7 +1,9 @@
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 import numpy as np
 import scipy.stats as stats
+from matplotlib.pyplot import tight_layout
 
 from summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats
 
@@ -13,9 +15,14 @@ def plot_violin(ax, data, label, ylabel, alpha=0.05):
     plot = ax.violinplot(data, showmedians=True, showextrema=False)
     p_values = []
     for i, pc in enumerate(plot['bodies'][1:], start=1):
-        a_test = stats.anderson_ksamp((data[0], data[i]), method=stats.PermutationMethod())
-        p_values.append(a_test.pvalue)
-        color = colors[1] if a_test.pvalue < alpha else colors[0]
+        if data[i][0] == 0 and data[i][1] == 0:
+            # just a dummy value
+            p_values.append(0)
+            color = colors[1]
+        else:
+            a_test = stats.anderson_ksamp((data[0], data[i]), method=stats.PermutationMethod())
+            p_values.append(a_test.pvalue)
+            color = colors[1] if a_test.pvalue < alpha else colors[0]
         pc.set_facecolor(color)
         pc.set_edgecolor('black')
         pc.set_alpha(0.8)
@@ -29,12 +36,12 @@ def plot_violin(ax, data, label, ylabel, alpha=0.05):
         ax.set_title(f'{label}\n')
 
 
-def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = None, seed: int = 42):
+def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = None, compare_n: int = 5,
+                               seed: int = 42):
     """
     Compare the summary statistics of the test simulation and the posterior simulations using the Anderson-Darling
     k-sample test and violin plots. Assumes that the first simulation of the posterior is the median/map.
     """
-
     if len(test_sim) != 1:
         raise ValueError("The test simulation should only have one population")
 
@@ -44,7 +51,7 @@ def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = 
     # compute the summary statistics
     synthetic_summary_stats_list = [reduced_coordinates_to_sumstat(t * factor) for t in
                                     test_sim]  # should be only one population
-    simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim) for pop_sim in posterior_sim]
+    simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim * factor) for pop_sim in posterior_sim]
 
     # compute the mean of the summary statistics
     (ad_mean_synth, ad_mean_synth_averg,
@@ -64,32 +71,34 @@ def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = 
     if len(ad_mean_synth_sim) == 1:
         random_index = [0]
     else:
-        random_index = np.random.choice(range(1, len(ad_mean_synth_sim)), min(5, len(ad_mean_synth_sim) - 1), replace=False)
+        random_index = np.random.choice(range(1, len(ad_mean_synth_sim)),
+                                        min(compare_n, len(ad_mean_synth_sim)) - 1, replace=False)
         random_index = np.append(0, random_index)
 
     # Perform the Anderson-Darling k-sample test and plot for each statistic
+    # it might happen that lists are empty, so we need to check for that and add a dummy value
     # Angle Degree
-    plot_violin(ax[0], [ad_mean_synth[0]] + [ad_mean_synth_sim[i] for i in random_index],
+    plot_violin(ax[0], [ad_mean_synth[0]] + [ad_mean_synth_sim[i] if len(ad_mean_synth_sim[i]) > 0 else [0, 0] for i in random_index],
                 'Angle Degree', 'Angle Degree (degrees)\nMean per Cell')
 
     # Mean Squared Displacement (MSD)
-    plot_violin(ax[1], [MSD_mean_synth[0]] + [MSD_mean_synth_sim[i] for i in random_index],
+    plot_violin(ax[1], [MSD_mean_synth[0]] + [MSD_mean_synth_sim[i] if len(MSD_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
                 'Mean Squared Displacement', 'MSD\nMean per Cell')
 
     # Turning Angle
-    plot_violin(ax[2], [TA_mean_synth[0]] + [TA_mean_synth_sim[i] for i in random_index],
+    plot_violin(ax[2], [TA_mean_synth[0]] + [TA_mean_synth_sim[i] if len(TA_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
                 'Turning Angle', 'Turning Angle (radians)\nMean per Cell')
 
     # Velocity
-    plot_violin(ax[3], [VEL_mean_synth[0]] + [VEL_mean_synth_sim[i] for i in random_index],
+    plot_violin(ax[3], [VEL_mean_synth[0]] + [VEL_mean_synth_sim[i] if len(VEL_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
                 'Velocity', 'Velocity\nMean per Cell')
 
     # Waiting Time
-    plot_violin(ax[4], [WT_mean_synth[0]] + [WT_mean_synth_sim[i] for i in random_index],
+    plot_violin(ax[4], [WT_mean_synth[0]] + [WT_mean_synth_sim[i] if len(WT_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
                 'Waiting Time', 'Waiting Time (sec)\nMean per Cell')
 
     if path is not None:
-        plt.savefig(f'{path}')
+        plt.savefig(f'{path}.png')
     plt.show()
 
     # Wasserstein distance
@@ -105,7 +114,7 @@ def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = 
 
 def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
                     path: str = None, label_true: str = None,
-                    two_plots: bool = False, show_image: bool = False):
+                    two_plots: bool = False, show_image: bool = False, show_umap: bool = False):
     """
     Plot the trajectories of the test simulation and one posterior simulation.
     """
@@ -139,8 +148,38 @@ def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
         a.legend()
         a.set_xlabel('x')
     if path is not None:
-        plt.savefig(f'{path}')
+        plt.savefig(f'{path}.png')
     plt.show()
+
+    if show_umap:
+        import umap
+
+        trajectories = np.concatenate([test_sim, posterior_sim])
+        # wide format
+        trajectories = np.concatenate([trajectories[..., 0], trajectories[..., 1]], axis=1)
+        trajectories[np.isnan(trajectories)] = -1
+
+        color_code = np.concatenate([np.zeros(test_sim.shape[0]), np.ones(posterior_sim.shape[0])])
+        colors = ['#1f77b4', '#ff7f0e']
+
+        reducer = umap.UMAP(random_state=42, n_jobs=1)
+        embedding = reducer.fit_transform(trajectories)
+
+        plt.figure(tight_layout=True, figsize=(5, 5))
+        plt.scatter(
+            embedding[:, 0],
+            embedding[:, 1],
+            c=[colors[int(i)] for i in color_code],
+            alpha=0.5,
+        )
+        plt.gca().set_aspect('equal', 'datalim')
+        patches = [Patch(color=colors[i], label=f'{[label_true, "Simulated"][i]}') for i in range(2)]
+        plt.legend(handles=patches)
+        plt.title('UMAP Projection')
+        plt.savefig(f'{path}-umap.png')
+        plt.show()
+
+    return
 
 
     #

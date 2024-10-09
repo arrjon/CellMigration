@@ -1,0 +1,12 @@
+numpy~=1.26.4
+pyabc~=0.12.13
+scipy~=1.13.0
+tidynamics~=1.1.2
+tensorflow~=2.15.1
+fitmulticell~=0.0.9
+bayesflow~=1.1.6
+matplotlib~=3.8.4
+pandas~=2.2.2
+keras~=2.15.0
+tqdm~=4.66.4
+tarp~=0.1.1
