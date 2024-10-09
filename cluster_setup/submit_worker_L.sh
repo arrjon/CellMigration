@@ -14,7 +14,7 @@ echo "cur_PWD: $cur_PWD"
 echo "IP: $IP"
 echo "PORT: $PORT"
 echo "TIME: $TIME"
-echo "PYHTONFILE: $PYHTONFILE"
+echo "TIME: ${TIME:0:1}d"
 
 cd ${cur_PWD}
 
@@ -23,7 +23,7 @@ source ~/CellMigration/env.sh
 
 # Start redis-worker
 cd /home/jarruda_hpc/CellMigration/cellMigration/bin/
-abc-redis-worker  --host=${IP} --port ${PORT} --runtime ${TIME:0:2}h --processes ${CPUSPERTASK} --daemon false
+abc-redis-worker  --host=${IP} --port ${PORT} --runtime ${TIME:0:1}d --processes ${CPUSPERTASK} --daemon false
 
 
 

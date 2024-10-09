@@ -3,7 +3,8 @@
 cur_PWD=${1}
 IP=${2}
 PORT=${3}
-PYHTONFILE=${4}
+JOBNAME=${4}
+PYHTONFILE=${5}
 
 cd ${cur_PWD}
 
@@ -16,7 +17,4 @@ echo "PYHTONFILE: $PYHTONFILE"
 source ~/CellMigration/env.sh
 
 # Start the python script
-
-python ${PYHTONFILE} --port ${PORT} --ip ${IP} > log/out.txt 2> log/err_${PORT}.txt
-
-
+python ${PYHTONFILE} --port ${PORT} --ip ${IP} > log/out_${JOBNAME}.txt 2> log/err_${PORT}_${JOBNAME}.txt

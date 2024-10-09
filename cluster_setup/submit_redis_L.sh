@@ -15,5 +15,3 @@ source ~/CellMigration/env.sh
 
 # Start redis-worker
 /home/jarruda_hpc/CellMigration/redis-stable_new/src/./redis-server --port ${PORT} --protected-mode no
-
-

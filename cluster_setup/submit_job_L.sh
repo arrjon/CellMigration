@@ -7,13 +7,15 @@ N_NODES=${2}
 PARTITION=${3}
 TIME=${4}
 CPUSPERTASK=${5}
-PYTHONFILE=${6}
+JOBNAME=${6}
+PYTHONFILE=${7}
 
 echo "PORT: $PORT"
 echo "N_NODES: $N_NODES"
 echo "PARTITION: $PARTITION"
 echo "TIME: $TIME"
 echo "CPUSPERTASK: $CPUSPERTASK"
+echo "JOBNAME: $JOBNAME"
 echo "PYTHONFILE: $PYTHONFILE"
 
 if [ -z "${N_NODES}" ]
@@ -21,12 +23,12 @@ then
         N_NODES=1
 fi
 
-# Soruce Modules
+# Source Modules
 source ~/CellMigration/env.sh
 
 
 # Submit redis 
-srun --nodes=1 --ntasks=1 --cpus-per-task=${CPUSPERTASK}  bash -c 'hostname > master_ip && ${PWD}/submit_redis_L.sh $0 $1' ${PWD} ${PORT} > log/redis_output.txt &
+srun --nodes=1 --ntasks=1 --cpus-per-task=${CPUSPERTASK}  bash -c 'hostname > master_ip && ${PWD}/submit_redis_L.sh $0 $1' ${PWD} ${PORT} > log/redis_output_${JOBNAME}.txt &
 # Wait for redis to start
 sleep 10
 
@@ -43,10 +45,10 @@ echo 'REDIS_IP= ' ${REDIS_IP}
 # Start redis-worker
 for i in $(seq 1 $((N_NODES-2)))
 do
-    srun --nodes=1 --ntasks=1 --cpus-per-task=${CPUSPERTASK} submit_worker_L.sh ${PWD} ${REDIS_IP} ${PORT} ${TIME} ${CPUSPERTASK} > log/worker_${i}_output.txt &
+    srun --nodes=1 --ntasks=1 --cpus-per-task=${CPUSPERTASK} submit_worker_L.sh ${PWD} ${REDIS_IP} ${PORT} ${TIME} ${CPUSPERTASK} > log/worker_${i}_output_${JOBNAME}.txt &
 
 done
 
 # Start python script
-srun --nodes=1 --ntasks=1 --cpus-per-task=${CPUSPERTASK} submit_python_L.sh ${PWD} ${REDIS_IP} ${PORT} ${PYTHONFILE} > log/python_output.txt
+srun --nodes=1 --ntasks=1 --cpus-per-task=${CPUSPERTASK} submit_python_L.sh ${PWD} ${REDIS_IP} ${PORT} ${JOBNAME} ${PYTHONFILE} > log/python_output_${JOBNAME}.txt
 
