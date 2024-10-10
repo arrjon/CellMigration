@@ -6,12 +6,15 @@ from functools import partial
 
 import numpy as np
 import pyabc
-import scipy.stats as stats
 from fitmulticell import model as morpheus_model
 from fitmulticell.sumstat import SummaryStatistics
 from matplotlib import pyplot as plt
 
-from summary_stats import reduce_to_coordinates, reduced_coordinates_to_sumstat, compute_mean_summary_stats
+from synth_data_params_bayesflow.load_bayesflow_model import load_model, custom_loader
+from synth_data_params_bayesflow.plotting_routines import plot_compare_summary_stats, plot_trajectory, \
+    plot_autocorrelation
+from synth_data_params_bayesflow.summary_stats import reduced_coordinates_to_sumstat, reduce_to_coordinates, \
+    compute_mean_summary_stats
 
 # get the job array id and number of processors
 run_args = sys.argv[1]
@@ -100,15 +103,7 @@ print(obs_pars)
 # %%
 import tensorflow as tf
 import bayesflow as bf
-from bayesflow.amortizers import AmortizedPosterior
-from bayesflow.networks import InvertibleNetwork
-from bayesflow.helper_networks import MultiConv1D
 from bayesflow.simulation import GenerativeModel, Prior, Simulator
-from bayesflow.trainers import Trainer
-from bayesflow import default_settings as defaults
-from functools import partial
-from tensorflow.keras.layers import Dense, GRU, LSTM, Bidirectional
-from tensorflow.keras.models import Sequential
 
 
 def prior_fun(batch_size: int) -> np.ndarray:
@@ -175,36 +170,20 @@ generative_model = GenerativeModel(prior=bayesflow_prior, simulator=bayes_simula
 if presimulate:
     print('presimulating')
     from time import sleep
-
     sleep(job_array_id)
 
     # we create on batch per job and save it in a folder
     epoch_id = job_array_id // iterations_per_epoch
-    generative_model.presimulate_and_save(batch_size=batch_size,
-                                          folder_path=presimulation_path + f'/epoch_{epoch_id}',
-                                          iterations_per_epoch=1,
-                                          epochs=1,
-                                          extend_from=job_array_id,
-                                          disable_user_input=True)
+    generative_model.presimulate_and_save(
+        batch_size=batch_size,
+        folder_path=presimulation_path+f'/epoch_{epoch_id}',
+        iterations_per_epoch=1,
+        epochs=1,
+        extend_from=job_array_id,
+        disable_user_input=True
+    )
     print('Done!')
     exit()
-
-
-# %%
-
-def custom_loader(file_path):
-    """Uses pickle to load, but each path is folder with multiple files, each one batch"""
-    # load all files in folder
-    loaded_presimulations = []
-    for file in os.listdir(file_path):
-        with open(os.path.join(file_path, file), 'rb') as f:
-            test = pickle.load(f)[0]
-            assert isinstance(test, dict)
-            loaded_presimulations.append(test)
-    # shuffle list, so iterations are random, only batches stay the same
-    np.random.shuffle(loaded_presimulations)
-    return loaded_presimulations
-
 
 # %%
 
@@ -241,249 +220,53 @@ if not training:
     exit()
 
 
-def configurator(forward_dict: dict, manual_summary: bool = False) -> dict:
-    out_dict = {}
+job_array_id = 5
+trainer, map_idx_sim = load_model(
+    model_id=job_array_id,
+    x_mean=x_mean,
+    x_std=x_std,
+    p_mean=p_mean,
+    p_std=p_std,
+    summary_valid_max=summary_valid_max,
+    summary_valid_min=summary_valid_min,
+    generative_model=generative_model
+)
 
-    # Extract data
-    x = forward_dict["sim_data"]
+if not os.path.exists(trainer.checkpoint_path):
+    trainer._setup_optimizer(
+        optimizer=None,
+        epochs=epochs,
+        iterations_per_epoch=iterations_per_epoch
+    )
 
-    # compute manual summary statistics
-    if manual_summary:
-        summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in x]
-        # compute the mean of the summary statistics
-        (_, ad_averg, _, MSD_averg, _,
-         TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list, remove_nan=False)
-        direct_conditions = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
-        # normalize statistics
-        direct_conditions = (direct_conditions - summary_valid_min) / (summary_valid_max - summary_valid_min)
-        # replace nan or inf with -1
-        direct_conditions[np.isinf(direct_conditions)] = -1
-        direct_conditions[np.isnan(direct_conditions)] = -1
-        out_dict['direct_conditions'] = direct_conditions.astype(np.float32)
-
-    # Normalize data
-    x = (x - x_mean) / x_std
-
-    # Check for NaN values in the first entry of the last axis
-    # If nan_mask is False (no NaNs), set to 1; otherwise, set to 0
-    nan_mask = np.isnan(x[..., 0])
-    new_dim = np.where(nan_mask, 0, 1)
-    new_dim_expanded = np.expand_dims(new_dim, axis=-1)
-    x = np.concatenate((x, new_dim_expanded), axis=-1)
-
-    # Normalize data
-    x[np.isnan(x)] = 0  # replace nan with 0, pre-padding (since we have nans in the data at the end)
-    out_dict['summary_conditions'] = x.astype(np.float32)
-
-    # Extract params
-    if 'parameters' in forward_dict.keys():
-        forward_dict["prior_draws"] = forward_dict["parameters"]
-    if 'prior_draws' in forward_dict.keys():
-        params = forward_dict["prior_draws"]
-        params = (params - p_mean) / p_std
-        out_dict['parameters'] = params.astype(np.float32)
-    return out_dict
-
-
-# define the network
-class GroupSummaryNetwork(tf.keras.Model):
-    """Network to summarize the data of groups of cells.  Each group is passed through a series of convolutional layers
-    followed by an LSTM layer. The output of the LSTM layer is then pooled across the groups and dense layer applied
-    to obtain a summary of fixed dimensionality. The network is invariant to the order of the groups.
-    """
-
-    def __init__(
-            self,
-            summary_dim,
-            num_conv_layers=2,
-            rnn_units=128,
-            bidirectional=True,
-            conv_settings=None,
-            use_attention=False,
-            return_attention_weights=False,
-            use_GRU=True,
-            **kwargs
-    ):
-        super().__init__(**kwargs)
-
-        if conv_settings is None:
-            conv_settings = defaults.DEFAULT_SETTING_MULTI_CONV
-
-        conv = Sequential([MultiConv1D(conv_settings) for _ in range(num_conv_layers)])
-        self.group_conv = tf.keras.layers.TimeDistributed(conv)
-        self.use_attention = use_attention
-        self.return_attention_weights = return_attention_weights
-        self.pooling = tf.keras.layers.GlobalAveragePooling1D()
-
-        if self.use_attention:
-            self.attention = tf.keras.layers.MultiHeadAttention(num_heads=4, key_dim=rnn_units)
-
-        if use_GRU:
-            rnn = Bidirectional(GRU(rnn_units, return_sequences=use_attention)) if bidirectional else GRU(rnn_units,
-                                                                                                          return_sequences=use_attention)
-        else:
-            rnn = Bidirectional(LSTM(rnn_units, return_sequences=use_attention)) if bidirectional else LSTM(rnn_units,
-                                                                                                            return_sequences=use_attention)
-        self.group_rnn = tf.keras.layers.TimeDistributed(rnn)
-
-        self.out_layer = Dense(summary_dim, activation="linear")
-        self.summary_dim = summary_dim
-
-    def call(self, x, **kwargs):
-        """Performs a forward pass through the network by first passing `x` through the same rnn network for
-        each household and then pooling the outputs across households.
-
-        Parameters
-        ----------
-        x : tf.Tensor
-            Input of shape (batch_size, n_groups, n_time_steps, n_features)
-
-        Returns
-        -------
-        out : tf.Tensor
-            Output of shape (batch_size, summary_dim)
-        """
-        # Apply the RNN to each group
-        out = self.group_conv(x, **kwargs)
-        out = self.group_rnn(out, **kwargs)  # (batch_size, n_groups, lstm_units)
-        # if attention is used, return full sequence (batch_size, n_groups, n_time_steps, lstm_units)
-        # bidirectional LSTM returns 2*lstm_units
-
-        if self.use_attention:
-            # learn a query vector to attend over the time points
-            query = tf.reduce_mean(out, axis=1)
-            # Reshape query to match the required shape for attention
-            query = tf.expand_dims(query, axis=1)  # (batch_size, 1, n_time_steps, lstm_units)
-            if not self.return_attention_weights:
-                out = self.attention(query, out, **kwargs)  # (batch_size, 1, n_time_steps, lstm_units)
-            else:
-                out, attention_weights = self.attention(query, out, return_attention_scores=True, **kwargs)
-                attention_weights = tf.squeeze(attention_weights, axis=2)
-            out = tf.squeeze(out, axis=1)  # Remove the extra dimension (batch_size, n_time_steps, lstm_units)
-            out = self.pooling(out, **kwargs)  # (batch_size, 1, lstm_units)
-        else:
-            # pooling over groups, this totally invariants to the order of the groups
-            out = self.pooling(out, **kwargs)  # (batch_size, lstm_units)
-        # apply dense layer
-        out = self.out_layer(out, **kwargs)  # (batch_size, summary_dim)
-
-        if self.use_attention and self.return_attention_weights:
-            return out, attention_weights
-        return out
-
-
-num_coupling_layers = 6
-num_dense = 3
-use_attention = True
-use_bidirectional = True
-summary_loss = 'MMD'
-use_manual_summary = False
-if job_array_id == 0:
-    checkpoint_path = 'amortizer-cell-migration-attention-6'
-    map_idx_sim = np.nan
-elif job_array_id == 1:
-    checkpoint_path = 'amortizer-cell-migration-attention-6-manual'
-    use_manual_summary = True
-    map_idx_sim = np.nan
-elif job_array_id == 2:
-    checkpoint_path = 'amortizer-cell-migration-attention-7'
-    num_coupling_layers = 7
-    map_idx_sim = np.nan
-elif job_array_id == 3:
-    checkpoint_path = 'amortizer-cell-migration-attention-7-manual'
-    num_coupling_layers = 7
-    use_manual_summary = True
-    map_idx_sim = np.nan
-elif job_array_id == 4:
-    checkpoint_path = 'amortizer-cell-migration-attention-8'
-    num_coupling_layers = 8
-    map_idx_sim = np.nan
-elif job_array_id == 5:
-    checkpoint_path = 'amortizer-cell-migration-attention-8-manual'
-    num_coupling_layers = 8
-    use_manual_summary = True
-    map_idx_sim = np.nan
-else:
-    raise ValueError('Checkpoint path not found')
-print(checkpoint_path)
-
-summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
-                                  rnn_units=32,
-                                  use_attention=use_attention,
-                                  bidirectional=use_bidirectional)
-inference_net = InvertibleNetwork(num_params=n_params,
-                                  num_coupling_layers=num_coupling_layers,
-                                  coupling_design='spline',
-                                  coupling_settings={
-                                      "num_dense": num_dense,
-                                      "dense_args": dict(
-                                          activation='relu',
-                                          kernel_regularizer=tf.keras.regularizers.l2(1e-4),
-                                      ),
-                                      "dropout_prob": 0.2,
-                                      "bins": 16,
-                                  })
-
-amortizer = AmortizedPosterior(inference_net=inference_net, summary_net=summary_net,
-                               summary_loss_fun=summary_loss)
-
-# %%
-# build the trainer with networks and generative model
-max_to_keep = 17
-trainer = Trainer(amortizer=amortizer,
-                  configurator=partial(configurator,
-                                       manual_summary=use_manual_summary),
-                  generative_model=generative_model,
-                  checkpoint_path=checkpoint_path,
-                  skip_checks=True,  # once is enough, simulation takes time
-                  max_to_keep=max_to_keep)
-
-# check if file exist
-if os.path.exists(checkpoint_path):
-    trainer.load_pretrained_network()
-    history = trainer.loss_history.get_plottable()
-else:
-    trainer._setup_optimizer(optimizer=None,
-                             epochs=epochs,
-                             iterations_per_epoch=iterations_per_epoch)
-
-    history = trainer.train_from_presimulation(presimulation_path=presimulation_path,
-                                               optimizer=trainer.optimizer,
-                                               max_epochs=epochs,
-                                               early_stopping=True,
-                                               early_stopping_args={'patience': max_to_keep-2},
-                                               custom_loader=custom_loader,
-                                               validation_sims=valid_data)
+    history = trainer.train_from_presimulation(
+        presimulation_path=presimulation_path,
+        optimizer=trainer.optimizer,
+        max_epochs=epochs,
+        early_stopping=True,
+        early_stopping_args={'patience': 17 - 2},
+        custom_loader=custom_loader,
+        validation_sims=valid_data
+    )
     print('Training done!')
-
-# Check if training converged
-if np.isnan(history['val_losses'].iloc[-1]).any():
-    print('Training failed with NaN loss at the end')
-    if np.isnan(history['val_losses'].iloc[-max_to_keep:]).all():
-        print('Training failed with NaN loss for all latest checkpoints')
-
-# Find the checkpoint with the lowest validation loss out of the last max_to_keep
-recent_losses = history['val_losses'].iloc[-max_to_keep:]
-best_valid_epoch = recent_losses['Loss'].idxmin() + 1  # checkpoints are 1-based indexed
-new_checkpoint = trainer.manager.latest_checkpoint.rsplit('-', 1)[0] + f'-{best_valid_epoch}'
-trainer.checkpoint.restore(new_checkpoint)
-print(f"Networks loaded from {new_checkpoint} with {recent_losses['Loss'][best_valid_epoch-1]} validation loss")
+else:
+    history = trainer.loss_history.get_plottable()
 
 # diagnostic plots
 valid_data_config = trainer.configurator(valid_data)
 
-posterior_samples = amortizer.sample(valid_data_config, n_samples=100)
+posterior_samples = trainer.amortizer.sample(valid_data_config, n_samples=100)
 posterior_samples = posterior_samples * p_std + p_mean
 prior_draws = valid_data_config["parameters"] * p_std + p_mean
 
 _ = bf.diagnostics.plot_sbc_ecdf(posterior_samples, prior_draws, difference=True, param_names=log_param_names)
-plt.savefig(f'{checkpoint_path}/sbc_ecdf.png')
+plt.savefig(f'{trainer.checkpoint_path}/sbc_ecdf.png')
 
-posterior_samples = amortizer.sample(valid_data_config, n_samples=1000)
+posterior_samples = trainer.amortizer.sample(valid_data_config, n_samples=1000)
 posterior_samples = posterior_samples * p_std + p_mean
 
 _ = bf.diagnostics.plot_recovery(posterior_samples, prior_draws, param_names=log_param_names)
-plt.savefig(f'{checkpoint_path}/recovery.png')
+plt.savefig(f'{trainer.checkpoint_path}/recovery.png')
 
 
 # simulate test data
@@ -496,124 +279,53 @@ else:
     test_sim = np.load(os.path.join(gp, 'test_sim.npy'))
     test_sim_full = {'sim_data': test_sim}
 
-test_posterior_samples = amortizer.sample(trainer.configurator(test_sim_full), n_samples=100)
+test_posterior_samples = trainer.amortizer.sample(trainer.configurator(test_sim_full), n_samples=100)
 test_posterior_samples = test_posterior_samples * p_std + p_mean
+test_posterior_samples_median = np.median(test_posterior_samples, axis=0)
 
 # compute the log posterior of the test data
 input_dict = {
     'sim_data': np.repeat(test_sim, repeats=100, axis=0),
     'parameters': test_posterior_samples
 }
-log_prob = amortizer.log_posterior(trainer.configurator(input_dict))
+log_prob = trainer.amortizer.log_posterior(trainer.configurator(input_dict))
 
 # get the MAP
 map_idx = np.argmax(log_prob)
 
 # %%
 # get posterior samples and simulate
-if not os.path.exists(checkpoint_path + '/posterior_sim.npy'):
+if not os.path.exists(trainer.checkpoint_path + '/posterior_sim.npy'):
     # simulate the data
     posterior_sim = bayes_simulator(test_posterior_samples)['sim_data']
-    np.save(checkpoint_path + '/posterior_sim.npy', posterior_sim)
+    np.save(trainer.checkpoint_path + '/posterior_sim.npy', posterior_sim)
 
     print('map_sim', map_idx, log_prob[map_idx], test_posterior_samples[map_idx])
     map_idx_sim = map_idx
 else:
-    posterior_sim = np.load(checkpoint_path+'/posterior_sim.npy')
+    posterior_sim = np.load(trainer.checkpoint_path+'/posterior_sim.npy')
     map_sim = posterior_sim[map_idx_sim]
 
-# compute the summary statistics
-synthetic_summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in test_sim]  # should be only one population
-simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim) for pop_sim in posterior_sim]
+# plot the summary statistics
+wasserstein_distance = plot_compare_summary_stats(test_sim, posterior_sim, path=f'{trainer.checkpoint_path}/Summary Stats')
 
-# compute the mean of the summary statistics
-(ad_mean_synth, ad_mean_synth_averg,
- MSD_mean_synth, MSD_mean_synth_averg,
- TA_mean_synth, TA_mean_synth_averg,
- VEL_mean_synth, VEL_mean_synth_averg,
- WT_mean_synth, WT_mean_synth_averg) = compute_mean_summary_stats(synthetic_summary_stats_list)
-(ad_mean_synth_sim, ad_mean_synth_sim_averg,
- MSD_mean_synth_sim, MSD_mean_synth_sim_averg,
- TA_mean_synth_sim, TA_mean_synth_sim_averg,
- VEL_mean_synth_sim, VEL_mean_synth_sim_averg,
- WT_mean_synth_sim, WT_mean_synth_sim_averg) = compute_mean_summary_stats(simulation_synth_summary_stats_list)
+# plot the trajectories
+plot_trajectory(test_sim[0], posterior_sim[0], path=f'{trainer.checkpoint_path}/Simulations', show_umap=True)
+plot_autocorrelation(test_sim[0], posterior_sim[0], path=f'{trainer.checkpoint_path}/Autocorrelation')
 
-# plot summary statistics
-fig, ax = plt.subplots(nrows=1, ncols=5, tight_layout=True, figsize=(12, 5))
-alpha = 0.05
-colors = ['#1f77b4', '#ff7f0e']  # Blue for non-significant, orange for significant
+if trainer.amortizer.summary_loss is not None:
+    test_data_config = trainer.configurator(test_sim_full)
 
-
-def plot_violin(ax, data, label, ylabel):
-    n_sim_plots = len(data) - 2
-
-    plot = ax.violinplot(data, showmedians=True, showextrema=False)
-    p_values = []
-    for i, pc in enumerate(plot['bodies']):
-        a_test = stats.anderson_ksamp((data[0], data[i]), method=stats.PermutationMethod())
-        p_values.append(a_test.pvalue)
-        color = colors[1] if a_test.pvalue < alpha else colors[0]
-        pc.set_facecolor(color)
-        pc.set_edgecolor('black')
-        pc.set_alpha(0.8)
-
-    ax.set_xticks(np.arange(n_sim_plots + 2) + 1, ['Data', 'MAP-Simulation'] + ['Simulation'] * n_sim_plots,
-                  rotation=90)
-    ax.set_ylabel(ylabel)
-    if np.sum(np.array(p_values) < alpha) > (len(data) - 1) // 2:
-        ax.set_title(f'{label}\n(Statistically Different)')
-    else:
-        ax.set_title(f'{label}\n')
-
-
-# Perform the Anderson-Darling k-sample test and plot for each statistic
-# Angle Degree
-plot_violin(ax[0], [ad_mean_synth[0], ad_mean_synth_sim[map_idx_sim]] + [ad_mean_synth_sim[i] for i in range(5)],
-            'Angle Degree', 'Angle Degree (degrees)\nMean per Cell')
-
-# Mean Squared Displacement (MSD)
-plot_violin(ax[1], [MSD_mean_synth[0], MSD_mean_synth_sim[map_idx_sim]] + [MSD_mean_synth_sim[i] for i in range(5)],
-            'Mean Squared Displacement', 'MSD\nMean per Cell')
-
-# Turning Angle
-plot_violin(ax[2], [TA_mean_synth[0], TA_mean_synth_sim[map_idx_sim]] + [TA_mean_synth_sim[i] for i in range(5)],
-            'Turning Angle', 'Turning Angle (radians)\nMean per Cell')
-
-# Velocity
-plot_violin(ax[3], [VEL_mean_synth[0], VEL_mean_synth_sim[map_idx_sim]] + [VEL_mean_synth_sim[i] for i in range(5)],
-            'Velocity', 'Velocity\nMean per Cell')
-
-# Waiting Time
-plot_violin(ax[4], [WT_mean_synth[0], WT_mean_synth_sim[map_idx_sim]] + [WT_mean_synth_sim[i] for i in range(5)],
-            'Waiting Time', 'Waiting Time (sec)\nMean per Cell')
-
-plt.savefig(f'{checkpoint_path}/Summary Stats.png')
-plt.show()
-
-# Wasserstein distance
-wasserstein_distance = stats.wasserstein_distance(ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0])
-wasserstein_distance += stats.wasserstein_distance(MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0])
-wasserstein_distance += stats.wasserstein_distance(TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0])
-wasserstein_distance += stats.wasserstein_distance(VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0])
-wasserstein_distance += stats.wasserstein_distance(WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0])
-print(f"Wasserstein distance: {wasserstein_distance}")
-
-# plot the simulations or the MAP
-plt.plot(map_sim[0, :, 0], map_sim[0, :, 1], 'b', label='MAP Simulated Trajectories', alpha=1)
-for cell_id in range(1, cells_in_population):
-    plt.plot(map_sim[cell_id, :, 0], map_sim[cell_id, :, 1], 'b')
-
-# plot the synthetic data
-plt.plot(test_sim[0][0, :, 0], test_sim[0][0, :, 1], 'r', label='Synthetic Trajectories', alpha=1)
-for cell_id in range(1, cells_in_population):
-    plt.plot(test_sim[0][cell_id, :, 0], test_sim[0][cell_id, :, 1], 'r')
-
-plt.xlabel('x')
-plt.ylabel('y')
-plt.legend()
-plt.savefig(checkpoint_path+'/Simulations.png')
-plt.show()
+    MMD_sampling_distribution, MMD_observed = trainer.mmd_hypothesis_test(
+        observed_data=test_data_config,
+        reference_data=valid_data_config,  # if not provided, will use the generative model
+        num_null_samples=500,
+        bootstrap=True  # if True, use the reference data as null samples
+    )
+    fig = bf.diagnostics.plot_mmd_hypothesis_test(MMD_sampling_distribution, MMD_observed)
+    fig.savefig(f'{trainer.checkpoint_path}/Synthetic MMD.png', bbox_inches='tight')
+    plt.show()
 
 print('Map idx:', map_idx)
-print(f"Validation loss: {recent_losses['Loss'][best_valid_epoch-1]}")
+print(f"Validation loss: {np.min(history['val_losses'])}")
 print(f"Wasserstein distance: {wasserstein_distance}")

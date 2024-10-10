@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from summary_stats import cut_region
+from synth_data_params_bayesflow.summary_stats import cut_region
 
 
 def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: int,

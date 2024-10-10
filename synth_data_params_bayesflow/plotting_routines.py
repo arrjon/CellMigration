@@ -1,11 +1,10 @@
-
 import matplotlib.pyplot as plt
-from matplotlib.patches import Patch
 import numpy as np
 import scipy.stats as stats
-from matplotlib.pyplot import tight_layout
+from matplotlib.patches import Patch
 
-from summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats
+from synth_data_params_bayesflow.summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats, \
+    compute_summary_stats, compute_autocorrelation
 
 
 def plot_violin(ax, data, label, ylabel, alpha=0.05):
@@ -182,7 +181,41 @@ def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
     return
 
 
-    #
+def plot_autocorrelation(cell_population: np.ndarray, cell_population_2: np.ndarray = None, path: str = None):
+    """
+    Plot the autocorrelation of the summary statistics of the cell population for different statistics.
+    """
+
+    msd_list, ta_list, v_list, ad_list, wt_list = compute_summary_stats(cell_population)
+    stats = [[msd_list, ta_list, v_list, ad_list]]
+    if cell_population_2 is not None:
+        msd_list_2, ta_list_2, v_list_2, ad_list_2, wt_list_2 = compute_summary_stats(cell_population_2)
+        stats.append([msd_list_2, ta_list_2, v_list_2, ad_list_2])
+        fig, ax = plt.subplots(nrows=2, ncols=4, sharex=True, sharey=True, tight_layout=True, figsize=(12, 4))
+    else:
+        fig, ax = plt.subplots(nrows=1, ncols=4, sharex=True, sharey=True, tight_layout=True, figsize=(12, 4))
+        ax = [ax]
+
+    for j, a in enumerate(ax):
+        # plot auto-correlation
+        for i, (statistic, label) in enumerate(zip(stats[j],
+                                                   ['MSD', 'Turning Angle', 'Velocity', 'Angle Degree'])):
+            autocorr_results = compute_autocorrelation(statistic)
+
+            time_lag = np.arange(1, len(autocorr_results) + 2)
+            # Plot each cell's autocorrelation
+            for idx, autocorr in enumerate(autocorr_results):
+                a[i].plot(time_lag, autocorr, alpha=0.6, color='teal')
+
+            a[i].set_xlabel('Lag')
+            a[i].set_title(label)
+        a[0].set_ylabel('Autocorrelation')
+    if path is not None:
+        plt.savefig(f'{path}.png')
+    plt.show()
+    return
+
+#
     # fig, ax = plt.subplots(nrows=1, ncols=5, tight_layout=True, figsize=(12, 5))
     # alpha = 0.05
     # colors = ['#1f77b4', '#ff7f0e']  # Blue for non-significant, orange for significant

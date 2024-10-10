@@ -2,6 +2,7 @@ import math
 from typing import Optional, Union
 
 import numpy as np
+import pandas as pd
 import tidynamics  # to get sliding history stats in N*logN instead of N^2
 
 
@@ -136,6 +137,7 @@ def compute_mean(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
     else:
         return np.nan
 
+
 def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
     """
     Compute the variance if x is a non-empty list.
@@ -150,12 +152,29 @@ def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
         return np.nan
 
 
-def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
+def compute_autocorrelation(list_statistic: list) -> list:
     """
-    Compute the summary statistics of the reduced/visible coordinates of the cell population.
+    Compute the autocorrelation of a list of statistics.
+    """
+    autocorr_results = []
+    for s in list_statistic:
+        # Convert to pandas Series to handle NaN values easily
+        s_series = pd.Series(s)
+
+        # Calculate the autocorrelation, skipping NaNs automatically
+        autocorr = [s_series.autocorr(lag) for lag in range(len(list_statistic) + 1)]
+
+        # Store the result for each cell
+        autocorr_results.append(autocorr)
+    return autocorr_results
+
+
+def compute_summary_stats(cell_population: np.ndarray) -> (list, list, list, list, list):
+    """
+    Compute the statistics of the reduced/visible coordinates of each cell in a cell population.
 
     :param cell_population: 3D array of cell populations
-    :return: dictionary of summary statistics
+    :return: list of msd, ta, v, ad, wt
     """
     msd_list = []
     ta_list = []
@@ -176,6 +195,19 @@ def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
             v_list.append(velocity(sim_dict))
             ad_list.append(angle_degree(sim_dict))
             wt_list.append(mean_waiting_time(sim_dict))
+
+    return msd_list, ta_list, v_list, ad_list, wt_list
+
+
+def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
+    """
+    Compute the summary statistics (mean per cell) of the reduced/visible coordinates of the cell population.
+
+    :param cell_population: 3D array of cell populations
+    :return: dictionary of summary statistics
+    """
+    msd_list, ta_list, v_list, ad_list, wt_list = compute_summary_stats(cell_population)
+
     if not msd_list:
         return {'msd_mean': [np.nan], 'msd_var': [np.nan],
                 'ta_mean': [np.nan], 'ta_var': [np.nan],
