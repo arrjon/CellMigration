@@ -329,3 +329,4 @@ if trainer.amortizer.summary_loss is not None:
 print('Map idx:', map_idx)
 print(f"Validation loss: {np.min(history['val_losses'])}")
 print(f"Wasserstein distance: {wasserstein_distance}")
+del trainer

@@ -225,6 +225,8 @@ def make_sumstat_dict_nn(
     # if direct conditions are available, concatenate them
     if 'direct_conditions' in config_input.keys():
         out_dict['direct_conditions'] = config_input['direct_conditions'].flatten()
+
+    del trainer
     return out_dict
 
 
