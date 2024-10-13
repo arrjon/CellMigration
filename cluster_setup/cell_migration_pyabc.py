@@ -852,17 +852,19 @@ else:
         raise_on_error=False, sumstat=sumstat)
 
 #%%
+obs_nn = make_sumstat_dict_nn(test_sim)
 redis_sampler = RedisEvalParallelSampler(host=args.ip, port=args.port,
                                          adapt_look_ahead_proposal=False,
                                          look_ahead=False)
-abc = pyabc.ABCSMC(model_nn, prior, # here we use now the Euclidean distance
+abc_nn = pyabc.ABCSMC(model_nn, prior, # here we use now the Euclidean distance
                    population_size=population_size,
                    summary_statistics=make_sumstat_dict_nn,
                    sampler=redis_sampler)
 db_path = os.path.join(gp, "synthetic_test_nn_sumstats.db")
-history = abc.new("sqlite:///" + db_path, make_sumstat_dict_nn(test_sim))
+print(db_path)
+history = abc_nn.new("sqlite:///" + db_path, obs_nn)
 
 #start the abc fitting
-abc.run(min_acceptance_rate=1e-2, max_nr_populations=30)
+abc_nn.run(min_acceptance_rate=1e-2, max_nr_populations=30)
 #%%
 print('Done!')
