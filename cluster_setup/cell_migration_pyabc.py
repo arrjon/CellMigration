@@ -339,6 +339,85 @@ def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = T
     return result
 
 
+def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: int):
+
+    if not data_id in [0, 1]:
+        raise ValueError("The data_id should be either 0 or 1")
+
+    # load real data
+    real_data_id = [0, 1][data_id]
+    if real_data_id == 0:
+        real_data_df = pd.read_csv('/home/jarruda_hpc/CellMigration/real_data/37C-1_crop.csv')
+        y_size = 739.79  # microns
+        x_size = 279.74  # microns
+        x_offset, y_offset = -7.5, -2  # correction such that the pillars are in the middle
+        y_lin_shift = 0
+    else:
+        # more important data set, closer to the truth
+        real_data_df = pd.read_csv('/home/jarruda_hpc/CellMigration/real_data/37C_ctrl2.csv')
+        y_size = 882.94  # microns
+        x_size = 287.03  # microns
+        x_offset, y_offset = -2, -7.5  # 3, 7.5  # correction such that the pillars are in the middle
+        y_lin_shift = -0.04  # 0.05  # correction for the tilt of the data
+
+    # define the window
+    # simulation coordinates, length of the gap: 1351-1145 = 206
+    # in real data: 270
+    # 270/206 = 1.31
+    # morpheus size of image: 1173x2500
+    factor = 1.31
+    # reconstruction of the window assuming that it is centered
+    # morpheus coordinates: 1173x2500x0
+    window_x1, window_x2 = (1173 - y_size / factor) / 2., 1173 - (1173 - y_size / factor) / 2.
+    window_y1, window_y2 = (2500 - x_size / factor) / 2., 2500 - (2500 - x_size / factor) / 2.
+
+    # remove first three rows
+    real_data_df = real_data_df.iloc[3:]
+    # only keep positions and time
+    real_data_df = real_data_df[['TRACK_ID', 'POSITION_X', 'POSITION_Y', 'POSITION_T']]
+    # convert to numeric
+    real_data_df = real_data_df.apply(pd.to_numeric, errors='coerce')
+
+    # scale to morpheus coordinates
+    real_data_scaled_df = real_data_df.copy()
+    real_data_scaled_df['x'] = real_data_scaled_df['POSITION_X'] / factor + window_x1
+    real_data_scaled_df['y'] = real_data_scaled_df['POSITION_Y'] / factor + window_y1
+    # real cells are moving downwards, but in simulations they are going upwards
+    real_data_scaled_df['y'] = 2500 - real_data_scaled_df['y']
+    # data does not fit optimally, so we need to shift it
+    real_data_scaled_df['x'] += x_offset
+    real_data_scaled_df['y'] += y_offset
+    # data is tilted
+    real_data_scaled_df['x'] = real_data_scaled_df['x'] + (window_y2 - real_data_scaled_df['y']) * y_lin_shift
+    # time
+    real_data_scaled_df['t'] = real_data_scaled_df['POSITION_T']
+
+    real_data = []
+    cut_region_real_data = True
+    sequence_lengths_real = []
+    # each cell is of different length, each with x and y coordinates, make a tensor out of it
+    for s_id, sample in enumerate(real_data_scaled_df.TRACK_ID.unique()):
+        cell = real_data_scaled_df[real_data_scaled_df.TRACK_ID == sample]
+        # order by time
+        cell = cell.sort_values('POSITION_T', ascending=True)
+        sequence_lengths_real.append(len(cell['y']))
+        if cut_region_real_data:
+            cell = cut_region(cell, x_min=316.5, x_max=856.5, y_min=1145, y_max=1351, return_longest=True)
+            if cell is None:
+                continue
+            cell = cell[0]
+        # pre-pad the data with zeros, but first write zeros as nans to compute the mean and std
+        track = np.ones((max_sequence_length + 1, 2)) * np.nan
+        track[-len(cell['x'][:max_sequence_length]):, 0] = cell['x'][:max_sequence_length]
+        track[-len(cell['y'][:max_sequence_length]):, 1] = cell['y'][:max_sequence_length]
+        real_data.append(track[1:])  # remove the first time point, same as in the simulation (often nan anyway)
+
+    real_data = np.stack(real_data)
+    real_data_full = real_data.copy()
+    real_data = real_data[:cells_in_population * (real_data_full.shape[0] // cells_in_population)]
+    return real_data, real_data_full
+
+
 def custom_loader(file_path):
     """Uses pickle to load, but each path is folder with multiple files, each one batch"""
     # load all files in folder
@@ -624,7 +703,8 @@ n_procs = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
 print(job_array_id)
 on_cluster = True
 population_size = 1000
-run_old_sumstats = True
+run_old_sumstats = False
+load_synthetic_data = False
 
 parser = argparse.ArgumentParser(description='Parse necessary arguments')
 parser.add_argument('-pt', '--port', type=str, default="50004",
@@ -738,12 +818,21 @@ prior = pyabc.Distribution(**{key: pyabc.RV("uniform", loc=lb, scale=ub-lb)
 param_names = list(obs_pars.keys())
 print(obs_pars)
 #%%
-# simulate test data
-test_params = np.array(list(obs_pars_log.values()))
-if not os.path.exists(os.path.join(gp, 'test_sim.npy')):
-    raise FileNotFoundError('Test data not found')
+if load_synthetic_data:
+    # simulate test data
+    test_params = np.array(list(obs_pars_log.values()))
+    if not os.path.exists(os.path.join(gp, 'test_sim.npy')):
+        raise FileNotFoundError('Test data not found')
+    else:
+        test_sim = np.load(os.path.join(gp, 'test_sim.npy'))
 else:
-    test_sim = np.load(os.path.join(gp, 'test_sim.npy'))
+    # load real data
+    real_data, real_data_full = load_real_data(data_id=1,
+                                               max_sequence_length=max_sequence_length,
+                                               cells_in_population=cells_in_population)
+    test_sim = \
+    np.array([real_data[start:start + cells_in_population] for start in range(0, len(real_data), cells_in_population)])[
+        0][np.newaxis]
 #%%
 def obj_func_wass(sim: dict, obs: dict):
     total = 0
@@ -765,7 +854,7 @@ if run_old_sumstats:
                        population_size=population_size,
                        sampler=redis_sampler)
 
-    db_path = os.path.join(gp, "synthetic_test_old_sumstats.db")
+    db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_old_sumstats.db")
     history = abc.new("sqlite:///" + db_path, make_sumstat_dict(test_sim))
 
     #start the abc fitting
@@ -860,7 +949,7 @@ abc_nn = pyabc.ABCSMC(model_nn, prior, # here we use now the Euclidean distance
                    population_size=population_size,
                    summary_statistics=make_sumstat_dict_nn,
                    sampler=redis_sampler)
-db_path = os.path.join(gp, "synthetic_test_nn_sumstats.db")
+db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_nn_sumstats.db")
 print(db_path)
 history = abc_nn.new("sqlite:///" + db_path, obs_nn)
 
