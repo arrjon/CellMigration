@@ -858,7 +858,7 @@ if run_old_sumstats:
     history = abc.new("sqlite:///" + db_path, make_sumstat_dict(test_sim))
 
     #start the abc fitting
-    abc.run(min_acceptance_rate=1e-2, max_nr_populations=30)
+    abc.run(min_acceptance_rate=1e-2, max_nr_populations=15)
     print('Done!')
     exit()
 
@@ -954,6 +954,6 @@ print(db_path)
 history = abc_nn.new("sqlite:///" + db_path, obs_nn)
 
 #start the abc fitting
-abc_nn.run(min_acceptance_rate=1e-2, max_nr_populations=30)
+abc_nn.run(min_acceptance_rate=1e-2, max_nr_populations=15)
 #%%
 print('Done!')
