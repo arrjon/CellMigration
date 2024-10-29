@@ -635,6 +635,9 @@ def load_model(model_id: int,
     else:
         raise ValueError('Checkpoint path not found')
 
+    if on_cluster:
+        checkpoint_path = "/home/jarruda_hpc/CellMigration/synth_data_params_bayesflow/" + checkpoint_path
+
     summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
                                       rnn_units=32,
                                       use_attention=use_attention,

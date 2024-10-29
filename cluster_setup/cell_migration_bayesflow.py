@@ -220,7 +220,6 @@ if not training:
     exit()
 
 
-job_array_id = 5
 trainer, map_idx_sim = load_model(
     model_id=job_array_id,
     x_mean=x_mean,

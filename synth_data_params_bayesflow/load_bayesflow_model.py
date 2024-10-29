@@ -16,6 +16,9 @@ from tensorflow.keras.models import Sequential
 from synth_data_params_bayesflow.summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats
 
 
+on_cluster = False
+
+
 def custom_loader(file_path):
     """Uses pickle to load, but each path is folder with multiple files, each one batch"""
     # load all files in folder
@@ -232,6 +235,9 @@ def load_model(model_id: int,
         map_idx_sim = 86
     else:
         raise ValueError('Checkpoint path not found')
+
+    if on_cluster:
+        checkpoint_path = "/home/jarruda_hpc/CellMigration/synth_data_params_bayesflow/" + checkpoint_path
 
     summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
                                       rnn_units=32,
