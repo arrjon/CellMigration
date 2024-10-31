@@ -1,7 +1,7 @@
 import logging
 import os
-from functools import partial
 import pickle
+from functools import partial
 
 import numpy as np
 import tensorflow as tf
@@ -13,8 +13,8 @@ from bayesflow.trainers import Trainer
 from tensorflow.keras.layers import Dense, GRU, LSTM, Bidirectional
 from tensorflow.keras.models import Sequential
 
-from synth_data_params_bayesflow.summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats
-
+from load_data import load_real_data
+from summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats
 
 on_cluster = False
 
@@ -76,7 +76,6 @@ def configurator(
 
     if include_real is not None:
         assert manual_summary == True
-        from load_data import load_real_data
         max_sequence_length = 120
         cells_in_population = 50
         p = 1  # Lp-distance

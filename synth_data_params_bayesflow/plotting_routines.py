@@ -4,7 +4,7 @@ import scipy.stats as stats
 from matplotlib.patches import Patch
 import matplotlib
 
-from synth_data_params_bayesflow.summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats, \
+from summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats, \
     compute_summary_stats, compute_autocorrelation
 
 
@@ -125,10 +125,10 @@ def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
     else:
         fig, ax = plt.subplots(nrows=1, ncols=1, sharex=True, sharey=True, tight_layout=True, figsize=(5, 5))
         ax = [ax, ax]
-    tiff_im = plt.imread('Cell_migration_grid_v3_final2_invers.tiff')
 
     # plot the simulations or the MAP
     if show_image and two_plots:
+        tiff_im = plt.imread('Cell_migration_grid_v3_final2_invers.tiff')
         ax[1].imshow(tiff_im)
     ax[1].plot(posterior_sim[0, :, 0], posterior_sim[0, :, 1], 'b', label='Simulated Trajectories', alpha=1)
     for cell_id in range(1, cells_in_population):
@@ -136,6 +136,7 @@ def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
 
     # plot the synthetic data
     if show_image:
+        tiff_im = plt.imread('Cell_migration_grid_v3_final2_invers.tiff')
         ax[0].imshow(tiff_im)
     if label_true is None:
         label_true = 'Synthetic Trajectories'

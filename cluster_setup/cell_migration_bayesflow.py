@@ -231,7 +231,7 @@ trainer, map_idx_sim = load_model(
     generative_model=generative_model
 )
 
-if trainer.checkpoint_path is None:
+if not os.path.exists(trainer.checkpoint_path):
     trainer._setup_optimizer(
         optimizer=None,
         epochs=epochs,
