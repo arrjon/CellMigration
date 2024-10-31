@@ -33,11 +33,14 @@ def custom_loader(file_path):
     return loaded_presimulations
 
 
-def configurator(forward_dict: dict,
-                 x_mean: np.ndarray, x_std: np.ndarray,
-                 p_mean: np.ndarray, p_std: np.ndarray,
-                 summary_valid_min: np.ndarray = None, summary_valid_max: np.ndarray = None,
-                 manual_summary: bool = False) -> dict:
+def configurator(
+        forward_dict: dict,
+        x_mean: np.ndarray, x_std: np.ndarray,
+        p_mean: np.ndarray, p_std: np.ndarray,
+        summary_valid_min: np.ndarray = None, summary_valid_max: np.ndarray = None,
+        manual_summary: bool = False,
+        include_real: str = None
+) -> dict:
     out_dict = {}
 
     # Extract data
@@ -70,6 +73,68 @@ def configurator(forward_dict: dict,
     # Normalize data
     x[np.isnan(x)] = 0  # replace nan with 0, pre-padding (since we have nans in the data at the end)
     out_dict['summary_conditions'] = x.astype(np.float32)
+
+    if include_real is not None:
+        assert manual_summary == True
+        from load_data import load_real_data
+        max_sequence_length = 120
+        cells_in_population = 50
+        p = 1  # Lp-distance
+
+        real_data, _ = load_real_data(
+            data_id=1,
+            max_sequence_length=max_sequence_length,
+            cells_in_population=cells_in_population
+        )
+        real_data = np.array(
+            [real_data[start:start + cells_in_population]
+             for start in range(0, len(real_data), cells_in_population)])[0][np.newaxis]
+
+        trainer, _ = load_model(
+            model_id=5,
+            x_mean=x_mean,
+            x_std=x_std,
+            p_mean=p_mean,
+            p_std=p_std,
+            summary_valid_max=summary_valid_max,
+            summary_valid_min=summary_valid_min,
+        )
+
+        # configures the input for the network
+        config_input = trainer.configurator({"sim_data": real_data})
+        # get the summary statistics
+        real_dict = {
+            'summary_net': trainer.amortizer.summary_net(config_input['summary_conditions']).numpy(),
+            'direct_conditions': config_input['direct_conditions']
+        }
+
+        # get the summary statistics of the batch
+        batch_dict = {
+            'summary_net': trainer.amortizer.summary_net(out_dict['summary_conditions']).numpy(),
+            'direct_conditions': out_dict['direct_conditions']
+        }
+        real = np.concatenate((real_dict['summary_net'], real_dict['direct_conditions']), axis=-1)
+        batch = np.concatenate((batch_dict['summary_net'], batch_dict['direct_conditions']), axis=-1)
+
+        if include_real == 'concat':
+            # concatenate difference to real data to the summary conditions
+            out_direct = (np.abs(batch - real)**p).sum(axis=-1) ** (1/p)
+            out_dict['direct_conditions'] = np.concatenate((
+                batch_dict['summary_net'],  # no summary is trained, so we use the precomputed network
+                out_dict['direct_conditions'],  # direct conditions as they are
+                out_direct[:, np.newaxis]  # difference to real data (same norm as in pyABC)
+            ), axis=-1).astype(np.float32)
+        elif include_real == 'compare':
+            # summary statistics is only relative to real data
+            out_direct = (np.abs(batch - real)**p)
+            out_dict['direct_conditions'] = out_direct.astype(np.float32)  # difference to real data (same norm as in pyABC, but not summed)
+        else:
+            raise ValueError('Include real type not recognized')
+        del trainer
+        del real_data
+
+        # drop summary conditions
+        out_dict.pop('summary_conditions')
 
     # Extract params
     if 'parameters' in forward_dict.keys():
@@ -208,6 +273,7 @@ def load_model(model_id: int,
     use_bidirectional = True
     summary_loss = 'MMD'
     use_manual_summary = False
+    include_real = None
     if model_id == 0:
         checkpoint_path = 'amortizer-cell-migration-attention-6'
         map_idx_sim = 52
@@ -233,47 +299,74 @@ def load_model(model_id: int,
         num_coupling_layers = 8
         use_manual_summary = True
         map_idx_sim = 86
+    elif model_id == 6:
+        checkpoint_path = 'amortizer-cell-migration-attention-8-manual-include-real'
+        num_coupling_layers = 8
+        use_manual_summary = True
+        map_idx_sim = np.nan
+        include_real = 'concat'
+        summary_loss = None
+    elif model_id == 7:
+        checkpoint_path = 'amortizer-cell-migration-attention-8-manual-compare-real'
+        num_coupling_layers = 8
+        use_manual_summary = True
+        map_idx_sim = np.nan
+        include_real = 'compare'
+        summary_loss = None
     else:
         raise ValueError('Checkpoint path not found')
 
     if on_cluster:
         checkpoint_path = "/home/jarruda_hpc/CellMigration/synth_data_params_bayesflow/" + checkpoint_path
 
-    summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
-                                      rnn_units=32,
-                                      use_attention=use_attention,
-                                      bidirectional=use_bidirectional)
-    inference_net = InvertibleNetwork(num_params=n_params,
-                                      num_coupling_layers=num_coupling_layers,
-                                      coupling_design='spline',
-                                      coupling_settings={
-                                          "num_dense": num_dense,
-                                          "dense_args": dict(
-                                              activation='relu',
-                                              kernel_regularizer=tf.keras.regularizers.l2(1e-4),
-                                          ),
-                                          "dropout_prob": 0.2,
-                                          "bins": 16,
-                                      })
+    if include_real is None:
+        summary_net = GroupSummaryNetwork(
+            summary_dim=n_params * 2,
+            rnn_units=32,
+            use_attention=use_attention,
+            bidirectional=use_bidirectional
+        )
+    else:
+        summary_net = None
 
-    amortizer = AmortizedPosterior(inference_net=inference_net, summary_net=summary_net,
-                                   summary_loss_fun=summary_loss)
+    inference_net = InvertibleNetwork(
+        num_params=n_params,
+        num_coupling_layers=num_coupling_layers,
+        coupling_design='spline',
+        coupling_settings={
+            "num_dense": num_dense,
+            "dense_args": dict(
+                activation='relu',
+                kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+            ),
+            "dropout_prob": 0.2,
+            "bins": 16,
+        }
+    )
+
+    amortizer = AmortizedPosterior(
+        inference_net=inference_net,
+        summary_net=summary_net,
+        summary_loss_fun=summary_loss
+    )
 
     # Disable logging
     logging.disable(logging.CRITICAL)
 
     # build the trainer with networks and generative model
     max_to_keep = 17
-    trainer = Trainer(amortizer=amortizer,
-                      configurator=partial(configurator,
-                                           x_mean=x_mean, x_std=x_std,
-                                           p_mean=p_mean, p_std=p_std,
-                                           summary_valid_max=summary_valid_max, summary_valid_min=summary_valid_min,
-                                           manual_summary=use_manual_summary),
-                      generative_model=generative_model,
-                      checkpoint_path=checkpoint_path,
-                      skip_checks=True,  # simulation takes too much time
-                      max_to_keep=max_to_keep)
+    trainer = Trainer(
+        amortizer=amortizer,
+        configurator=partial(configurator,
+                             x_mean=x_mean, x_std=x_std,
+                             p_mean=p_mean, p_std=p_std,
+                             summary_valid_max=summary_valid_max, summary_valid_min=summary_valid_min,
+                             manual_summary=use_manual_summary, include_real=include_real),
+        generative_model=generative_model,
+        checkpoint_path=checkpoint_path,
+        skip_checks=True,  # simulation takes too much time
+        max_to_keep=max_to_keep
+    )
 
     # check if file exist
     if os.path.exists(checkpoint_path):

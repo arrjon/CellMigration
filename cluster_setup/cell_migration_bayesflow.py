@@ -10,10 +10,10 @@ from fitmulticell import model as morpheus_model
 from fitmulticell.sumstat import SummaryStatistics
 from matplotlib import pyplot as plt
 
-from synth_data_params_bayesflow.load_bayesflow_model import load_model, custom_loader
-from synth_data_params_bayesflow.plotting_routines import plot_compare_summary_stats, plot_trajectory, \
+from load_bayesflow_model import load_model, custom_loader
+from plotting_routines import plot_compare_summary_stats, plot_trajectory, \
     plot_autocorrelation
-from synth_data_params_bayesflow.summary_stats import reduced_coordinates_to_sumstat, reduce_to_coordinates, \
+from summary_stats import reduced_coordinates_to_sumstat, reduce_to_coordinates, \
     compute_mean_summary_stats
 
 # get the job array id and number of processors
@@ -231,7 +231,7 @@ trainer, map_idx_sim = load_model(
     generative_model=generative_model
 )
 
-if not os.path.exists(trainer.checkpoint_path):
+if trainer.checkpoint_path is None:
     trainer._setup_optimizer(
         optimizer=None,
         epochs=epochs,
