@@ -4,6 +4,7 @@ import pickle
 from functools import partial
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from bayesflow import default_settings as defaults
 from bayesflow.amortizers import AmortizedPosterior
@@ -257,35 +258,13 @@ class GroupSummaryNetwork(tf.keras.Model):
         return cls(**config)
 
 
-class EnsembleAmortizer:
-    def __init__(self, amortizers):
-        self.amortizers = amortizers
-        self.n_amortizers = len(amortizers)
-
-    def sample(self, forward_dict: list[dict], n_samples: int) -> np.ndarray:
-        if self.n_amortizers != len(forward_dict):
-            raise ValueError(f'Number of forward_dicts ({len(forward_dict)})'
-                             f' does not match number of amortizers ({self.n_amortizers}).')
-
-        out_list = []
-        n_samples_per_amortizer = np.ones(self.n_amortizers) * (n_samples // self.n_amortizers)
-        n_samples_per_amortizer[:n_samples % self.n_amortizers] += 1
-
-        for a_i, amortizer in enumerate(self.amortizers):
-            out = amortizer.sample(forward_dict[a_i], n_samples=n_samples_per_amortizer[a_i])
-            out_list.append(out)
-        if out_list[0].ndim == 2:
-            return np.concatenate(out_list, axis=0)
-        return np.concatenate(out_list, axis=1)
-
-
 class EnsembleTrainer:
     def __init__(self, trainers):
         self.trainers = trainers
         self.n_trainers = len(trainers)
         self.checkpoint_path = 'amortizer-cell-migration-ensemble'
-        self.loss_history = None
-        self.amortizer = EnsembleAmortizer([trainer.amortizer for trainer in trainers])
+        self.amortizer = self.EnsembleAmortizer([trainer.amortizer for trainer in trainers])
+        self.loss_history = self.EnsembleLossHistory(trainers)
 
     def configurator(self, forward_dict: dict) -> list[dict]:
         out_list = []
@@ -293,6 +272,50 @@ class EnsembleTrainer:
             out = trainer.configurator(forward_dict)
             out_list.append(out)
         return out_list
+
+    class EnsembleAmortizer:
+        def __init__(self, amortizers):
+            self.amortizers = amortizers
+            self.n_amortizers = len(amortizers)
+
+        def sample(self, forward_dict: list[dict], n_samples: int) -> np.ndarray:
+            if self.n_amortizers != len(forward_dict):
+                raise ValueError(f'Number of forward_dicts ({len(forward_dict)})'
+                                 f' does not match number of amortizers ({self.n_amortizers}).')
+
+            out_list = []
+            n_samples_per_amortizer = np.ones(self.n_amortizers) * (n_samples // self.n_amortizers)
+            n_samples_per_amortizer[:n_samples % self.n_amortizers] += 1
+
+            for a_i, amortizer in enumerate(self.amortizers):
+                out = amortizer.sample(forward_dict[a_i], n_samples=n_samples_per_amortizer[a_i])
+                out_list.append(out)
+            if out_list[0].ndim == 2:
+                return np.concatenate(out_list, axis=0)
+            return np.concatenate(out_list, axis=1)
+
+    class EnsembleLossHistory:
+        def __init__(self, trainers):
+            self.trainers = trainers
+
+        def get_plottable(self):
+            # Collect all DataFrames for each trainer's train and validation losses
+            train_dfs = []
+            val_dfs = []
+
+            for trainer in self.trainers:
+                history = trainer.loss_history.get_plottable()
+                train_dfs.append(history['train_losses'])
+                val_dfs.append(history['val_losses'])
+
+            # Calculate the average DataFrame across trainers for both train and val losses
+            avg_train_df = pd.concat(train_dfs).groupby(level=0).mean()
+            avg_val_df = pd.concat(val_dfs).groupby(level=0).mean()
+
+            return {
+                'train_losses': avg_train_df,
+                'val_losses': avg_val_df
+            }
 
 
 
@@ -359,8 +382,7 @@ def load_model(model_id: int,
             trainer, _ = load_model(m_id, x_mean, x_std, p_mean, p_std,
                                  summary_valid_max, summary_valid_min, generative_model)
             trainers.append(trainer)
-        trainers = EnsembleTrainer(trainers)
-        return trainers, np.nan  # no map_idx_sim for ensemble model
+        return EnsembleTrainer(trainers), np.nan  # no map_idx_sim for ensemble model
     else:
         raise ValueError('Checkpoint path not found')
 
