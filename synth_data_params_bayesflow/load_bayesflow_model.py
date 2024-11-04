@@ -376,7 +376,7 @@ def load_model(model_id: int,
         summary_loss = None
     elif model_id == 8:
         print('Loading ensemble model')
-        model_ids = [0, 1, 2, 3, 4, 5]
+        model_ids = [5, 4, 3, 2, 1, 0]
         trainers = []
         for m_id in model_ids:
             trainer, _ = load_model(m_id, x_mean, x_std, p_mean, p_std,
