@@ -283,7 +283,7 @@ class EnsembleTrainer:
     def __init__(self, trainers):
         self.trainers = trainers
         self.n_trainers = len(trainers)
-        self.checkpoint_path = None
+        self.checkpoint_path = 'amortizer-cell-migration-ensemble'
         self.loss_history = None
         self.amortizer = EnsembleAmortizer([trainer.amortizer for trainer in trainers])
 
