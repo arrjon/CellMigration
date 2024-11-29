@@ -294,6 +294,17 @@ class EnsembleTrainer:
                 return np.concatenate(out_list, axis=0)
             return np.concatenate(out_list, axis=1)
 
+        def summary_net(self, summary_conditions: np.ndarray) -> np.ndarray:
+            if self.n_amortizers != len(summary_conditions):
+                raise ValueError(f'Number of summary_conditions ({len(summary_conditions)})'
+                                 f' does not match number of amortizers ({self.n_amortizers}).')
+
+            out_list = []
+            for a_i, amortizer in enumerate(self.amortizers):
+                out = amortizer.summary_net(summary_conditions[a_i])
+                out_list.append(out)
+            return np.concatenate(out_list, axis=1)
+
     class EnsembleLossHistory:
         def __init__(self, trainers):
             self.trainers = trainers
