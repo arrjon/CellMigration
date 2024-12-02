@@ -1,8 +1,11 @@
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import scipy.stats as stats
+import seaborn as sns
 from matplotlib.patches import Patch
-import matplotlib
+from matplotlib.lines import Line2D
 
 from summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats, \
     compute_summary_stats, compute_autocorrelation
@@ -248,6 +251,7 @@ def calculate_ci(
 
 def sampling_parameter_cis(
     posterior_samples: np.ndarray,
+    true_param: np.ndarray = None,
     param_names: list[str] = None,
     alpha: list[int] = None,
     step: float = 0.05,
@@ -255,31 +259,10 @@ def sampling_parameter_cis(
     title: str = None,
     size: tuple[float, float] = None,
     ax: matplotlib.axes.Axes = None,
+    legend_bbox_to_anchor: tuple[float, float] = (1, 1),
 ) -> matplotlib.axes.Axes:
     """
-    Plot MCMC-based parameter credibility intervals.
-
-    Parameters
-    ----------
-    result:
-        The pyPESTO result object with filled sample result.
-    alpha:
-        List of lower tail probabilities, defaults to 95% interval.
-    step:
-        Height of boxes for projectile plot, defaults to 0.05.
-    show_median:
-        Plot the median of the MCMC chain. Default: True.
-    title:
-        Axes title.
-    size: ndarray
-        Figure size in inches.
-    ax:
-        Axes object to use.
-
-    Returns
-    -------
-    ax:
-        The plot axes.
+    Plot MCMC-based parameter credibility intervals. Function adapted from pyPESTO.
     """
     if alpha is None:
         alpha = [95]
@@ -326,6 +309,15 @@ def sampling_parameter_cis(
                         "k-",
                         label="Median",
                     )
+            if true_param is not None:
+                if n == len(alpha_sorted) - 1:
+                    ax.plot(
+                        [true_param[npar], true_param[npar]],
+                        [npar - _step, npar + _step],
+                        linestyle="--",
+                        color="black",
+                        label="True Parameter",
+                    )
 
             # increment height of boxes
             _step += step
@@ -343,175 +335,150 @@ def sampling_parameter_cis(
     plt.gca().invert_yaxis()
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=(1, 1))
+    ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=legend_bbox_to_anchor)
 
     return ax
 
-#
-    # fig, ax = plt.subplots(nrows=1, ncols=5, tight_layout=True, figsize=(12, 5))
-    # alpha = 0.05
-    # colors = ['#1f77b4', '#ff7f0e']  # Blue for non-significant, orange for significant
-    # np.random.seed(42)
-    # random_index = np.random.choice(range(len(ad_mean_synth_sim)), 5, replace=False)
-    #
-    # def plot_violin(ax, data, label, ylabel):
-    #     n_sim_plots = len(data) - 2
-    #
-    #     plot = ax.violinplot(data, showmedians=True, showextrema=False)
-    #     p_values = []
-    #     for i, pc in enumerate(plot['bodies'][1:], start=1):
-    #         a_test = stats.anderson_ksamp((data[0], data[i]), method=stats.PermutationMethod())
-    #         p_values.append(a_test.pvalue)
-    #         color = colors[1] if a_test.pvalue < alpha else colors[0]
-    #         pc.set_facecolor(color)
-    #         pc.set_edgecolor('black')
-    #         pc.set_alpha(0.8)
-    #
-    #     ax.set_xticks(np.arange(n_sim_plots + 2) + 1, ['Data', 'MAP-Simulation'] + ['Simulation'] * n_sim_plots,
-    #                   rotation=90)
-    #     ax.set_ylabel(ylabel)
-    #     if np.sum(np.array(p_values) < alpha) > (len(data) - 1) // 2:
-    #         ax.set_title(f'{label}\n(Statistically Different)')
-    #     else:
-    #         ax.set_title(f'{label}\n')
-    #
-    # # Perform the Anderson-Darling k-sample test and plot for each statistic
-    # # Angle Degree
-    # plot_violin(ax[0],
-    #             [ad_mean_synth[0], ad_mean_synth_sim[map_idx_sim]] + [ad_mean_synth_sim[i] for i in random_index],
-    #             'Angle Degree', 'Angle Degree (degrees)\nMean per Cell')
-    #
-    # # Mean Squared Displacement (MSD)
-    # plot_violin(ax[1],
-    #             [MSD_mean_synth[0], MSD_mean_synth_sim[map_idx_sim]] + [MSD_mean_synth_sim[i] for i in random_index],
-    #             'Mean Squared Displacement', 'MSD\nMean per Cell')
-    #
-    # # Turning Angle
-    # plot_violin(ax[2],
-    #             [TA_mean_synth[0], TA_mean_synth_sim[map_idx_sim]] + [TA_mean_synth_sim[i] for i in random_index],
-    #             'Turning Angle', 'Turning Angle (radians)\nMean per Cell')
-    #
-    # # Velocity
-    # plot_violin(ax[3],
-    #             [VEL_mean_synth[0], VEL_mean_synth_sim[map_idx_sim]] + [VEL_mean_synth_sim[i] for i in random_index],
-    #             'Velocity', 'Velocity\nMean per Cell')
-    #
-    # # Waiting Time
-    # plot_violin(ax[4],
-    #             [WT_mean_synth[0], WT_mean_synth_sim[map_idx_sim]] + [WT_mean_synth_sim[i] for i in random_index],
-    #             'Waiting Time', 'Waiting Time (sec)\nMean per Cell')
-    #
-    # plt.savefig(f'{checkpoint_path}/Summary Stats.png')
-    # plt.show()
-    #
-    # # Wasserstein distance
-    # wasserstein_distance = stats.wasserstein_distance(ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0])
-    # wasserstein_distance += stats.wasserstein_distance(MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0])
-    # wasserstein_distance += stats.wasserstein_distance(TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0])
-    # wasserstein_distance += stats.wasserstein_distance(VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0])
-    # wasserstein_distance += stats.wasserstein_distance(WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0])
-    # print(f"Wasserstein distance: {wasserstein_distance}")
-    # # %% raw
-    # # plot the summary statistics
-    # fig, ax = plt.subplots(nrows=3, ncols=5, sharey='col', tight_layout=True, figsize=(12, 8))
-    # n_sim_plots = 3
-    #
-    # # Perform the Kolmogorov-Smirnov test
-    # # ks_statistic, p_value = stats.ks_2samp(ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0])
-    # a_test = stats.anderson_ksamp((ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0]), method=stats.PermutationMethod())
-    # ks_statistic, p_value = a_test.statistic, a_test.pvalue
-    # print(f"Angle Degree KS Statistic: {ks_statistic}")
-    # print(f"Angle Degree P-value: {p_value}, {p_value < 0.05}: different distributions")
-    # ax[0, 0].violinplot([ad_mean_synth_sim[map_idx_sim], ad_mean_synth[0]], showmeans=True)
-    # if p_value < 0.05:
-    #     ax[0, 0].set_title(f'Angle Degree\n(Different)')
-    # else:
-    #     ax[0, 0].set_title(f'Angle Degree\n(Same)')
-    # ax[0, 0].set_ylabel(f'Angle Degree (degrees)\nMean per Cell')
-    # ax[1, 0].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[1, 0].violinplot([ad_mean_synth_sim_averg, ad_mean_synth_averg], showmeans=True)
-    # ax[1, 0].set_ylabel(f'Angle Degree (degrees)\nPopulation Mean')
-    # ax[0, 0].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[2, 0].violinplot([ad_mean_synth_sim[map_idx_sim]] + [ad_mean_synth_sim[i] for i in range(n_sim_plots)],
-    #                     showmeans=True)
-    # ax[2, 0].set_xticks(np.arange(n_sim_plots + 1) + 1, ['Map'] + ['Simulation'] * n_sim_plots, rotation=60)
-    #
-    # # ks_statistic, p_value = stats.ks_2samp(MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0])
-    # a_test = stats.anderson_ksamp((MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0]),
-    #                               method=stats.PermutationMethod())
-    # ks_statistic, p_value = a_test.statistic, a_test.pvalue
-    # print(f"MSD KS Statistic: {ks_statistic}")
-    # print(f"MSD P-value: {p_value}, {p_value < 0.05}: different distributions")
-    # ax[0, 1].violinplot([MSD_mean_synth_sim[map_idx_sim], MSD_mean_synth[0]], showmeans=True)
-    # if p_value < 0.05:
-    #     ax[0, 1].set_title(f'Mean Squared Displacement\n(Different)')
-    # else:
-    #     ax[0, 1].set_title(f'Mean Squared Displacement\n(Same)')
-    # ax[0, 1].set_ylabel(f'MSD\nMean per Cell')
-    # ax[0, 1].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[1, 1].violinplot([MSD_mean_synth_sim_averg, MSD_mean_synth_averg], showmeans=True)
-    # ax[1, 1].set_ylabel(f'MSD\nPopulation Mean')
-    # ax[1, 1].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[2, 1].violinplot([MSD_mean_synth_sim[map_idx_sim]] + [MSD_mean_synth_sim[i] for i in range(n_sim_plots)],
-    #                     showmeans=True)
-    # ax[2, 1].set_xticks(np.arange(n_sim_plots + 1) + 1, ['Map'] + ['Simulation'] * n_sim_plots, rotation=60)
-    #
-    # # ks_statistic, p_value = stats.ks_2samp(TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0])
-    # a_test = stats.anderson_ksamp((TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0]), method=stats.PermutationMethod())
-    # ks_statistic, p_value = a_test.statistic, a_test.pvalue
-    # print(f"Turning Angle KS Statistic: {ks_statistic}")
-    # print(f"Turning Angle P-value: {p_value}, {p_value < 0.05}: different distributions")
-    # ax[0, 2].violinplot([TA_mean_synth_sim[map_idx_sim], TA_mean_synth[0]], showmeans=True)
-    # if p_value < 0.05:
-    #     ax[0, 2].set_title(f'Turning Angle\n(Different)')
-    # else:
-    #     ax[0, 2].set_title(f'Turning Angle\n(Same)')
-    # ax[0, 2].set_ylabel(f'Turning Angle (radians)\nMean per Cell')
-    # ax[0, 2].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[1, 2].violinplot([TA_mean_synth_sim_averg, TA_mean_synth_averg], showmeans=True)
-    # ax[1, 2].set_ylabel(f'Turning Angle (radians)\nPopulation Mean')
-    # ax[1, 2].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[2, 2].violinplot([TA_mean_synth_sim[map_idx_sim]] + [TA_mean_synth_sim[i] for i in range(n_sim_plots)],
-    #                     showmeans=True)
-    # ax[2, 2].set_xticks(np.arange(n_sim_plots + 1) + 1, ['Map'] + ['Simulation'] * n_sim_plots, rotation=60)
-    #
-    # # ks_statistic, p_value = stats.ks_2samp(VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0])
-    # a_test = stats.anderson_ksamp((VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0]),
-    #                               method=stats.PermutationMethod())
-    # ks_statistic, p_value = a_test.statistic, a_test.pvalue
-    # print(f"Velocity KS Statistic: {ks_statistic}")
-    # print(f"Velocity P-value: {p_value}, {p_value < 0.05}: different distributions")
-    # ax[0, 3].violinplot([VEL_mean_synth_sim[map_idx_sim], VEL_mean_synth[0]], showmeans=True)
-    # if p_value < 0.05:
-    #     ax[0, 3].set_title(f'Velocity\n(Different)')
-    # else:
-    #     ax[0, 3].set_title(f'Velocity\n(Same)')
-    # ax[0, 3].set_ylabel(f'Velocity\nMean per Cell')
-    # ax[0, 3].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[1, 3].violinplot([VEL_mean_synth_sim_averg, VEL_mean_synth_averg], showmeans=True)
-    # ax[1, 3].set_ylabel(f'Velocity\nPopulation Mean')
-    # ax[1, 3].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[2, 3].violinplot([VEL_mean_synth_sim[map_idx_sim]] + [VEL_mean_synth_sim[i] for i in range(n_sim_plots)],
-    #                     showmeans=True)
-    # ax[2, 3].set_xticks(np.arange(n_sim_plots + 1) + 1, ['Map'] + ['Simulation'] * n_sim_plots, rotation=60)
-    #
-    # # ks_statistic, p_value = stats.ks_2samp(WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0])
-    # a_test = stats.anderson_ksamp((WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0]), method=stats.PermutationMethod())
-    # ks_statistic, p_value = a_test.statistic, a_test.pvalue
-    # print(f"Waiting Time KS Statistic: {ks_statistic}")
-    # print(f"Waiting Time P-value: {p_value}, {p_value < 0.05}: different distributions")
-    # ax[0, 4].violinplot([WT_mean_synth_sim[map_idx_sim], WT_mean_synth[0]], showmeans=True)
-    # if p_value < 0.05:
-    #     ax[0, 4].set_title(f'Waiting Time\n(Different)')
-    # else:
-    #     ax[0, 4].set_title(f'Waiting Time\n(Same)')
-    # ax[0, 4].set_ylabel(f'Waiting Time (sec)\nMean per Cell')
-    # ax[0, 4].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[1, 4].violinplot([WT_mean_synth_sim_averg, WT_mean_synth_averg], showmeans=True)
-    # ax[1, 4].set_ylabel(f'Waiting Time (sec)\nPopulation Mean')
-    # ax[1, 4].set_xticks([1, 2], ['Simulation', 'Synthetic'])
-    # ax[2, 4].violinplot([WT_mean_synth_sim[map_idx_sim]] + [WT_mean_synth_sim[i] for i in range(n_sim_plots)],
-    #                     showmeans=True)
-    # ax[2, 4].set_xticks(np.arange(n_sim_plots + 1) + 1, ['Map'] + ['Simulation'] * n_sim_plots, rotation=60)
-    # plt.savefig(f'{checkpoint_path}/Summary Stats.png')
-    # plt.show()
+
+def plot_posterior_2d(
+    posterior_draws,
+    prior=None,
+    prior_draws=None,
+    param_names=None,
+    true_params=None,
+    height=3,
+    label_fontsize=14,
+    legend_fontsize=16,
+    tick_fontsize=12,
+    post_color="#8f2727",
+    prior_color="gray",
+    post_alpha=0.9,
+    prior_alpha=0.7,
+):
+    """Generates a bivariate pairplot given posterior draws and optional prior or prior draws.
+    Function adapted from BayesFlow.
+
+    posterior_draws   : np.ndarray of shape (n_post_draws, n_params)
+        The posterior draws obtained for a SINGLE observed data set.
+    prior             : bayesflow.forward_inference.Prior instance or None, optional, default: None
+        The optional prior object having an input-output signature as given by bayesflow.forward_inference.Prior
+    prior_draws       : np.ndarray of shape (n_prior_draws, n_params) or None, optional (default: None)
+        The optional prior draws obtained from the prior. If both prior and prior_draws are provided, prior_draws
+        will be used.
+    param_names       : list or None, optional, default: None
+        The parameter names for nice plot titles. Inferred if None
+    true_params: np.ndarray of shape (n_params,) or None, optional, default: None
+    height            : float, optional, default: 3
+        The height of the pairplot
+    label_fontsize    : int, optional, default: 14
+        The font size of the x and y-label texts (parameter names)
+    legend_fontsize   : int, optional, default: 16
+        The font size of the legend text
+    tick_fontsize     : int, optional, default: 12
+        The font size of the axis ticklabels
+    post_color        : str, optional, default: '#8f2727'
+        The color for the posterior histograms and KDEs
+    priors_color      : str, optional, default: gray
+        The color for the optional prior histograms and KDEs
+    post_alpha        : float in [0, 1], optonal, default: 0.9
+        The opacity of the posterior plots
+    prior_alpha       : float in [0, 1], optonal, default: 0.7
+        The opacity of the prior plots
+
+    Returns
+    -------
+    f : plt.Figure - the figure instance for optional saving
+
+    Raises
+    ------
+    AssertionError
+        If the shape of posterior_draws is not 2-dimensional.
+    """
+
+    # Ensure correct shape
+    assert (
+        len(posterior_draws.shape)
+    ) == 2, "Shape of `posterior_samples` for a single data set should be 2 dimensional!"
+
+    # Obtain n_draws and n_params
+    n_draws, n_params = posterior_draws.shape
+
+    # If prior object is given and no draws, obtain draws
+    if prior is not None and prior_draws is None:
+        draws = prior(n_draws)
+        if type(draws) is dict:
+            prior_draws = draws["prior_draws"]
+        else:
+            prior_draws = draws
+    # Otherwise, keep as is (prior_draws either filled or None)
+    else:
+        pass
+
+    # Attempt to determine parameter names
+    if param_names is None:
+        if hasattr(prior, "param_names"):
+            if prior.param_names is not None:
+                param_names = prior.param_names
+            else:
+                param_names = [f"$\\theta_{{{i}}}$" for i in range(1, n_params + 1)]
+        else:
+            param_names = [f"$\\theta_{{{i}}}$" for i in range(1, n_params + 1)]
+
+    # Pack posterior draws into a dataframe
+    posterior_draws_df = pd.DataFrame(posterior_draws, columns=param_names)
+
+    # Add posterior
+    g = sns.PairGrid(posterior_draws_df, height=height)
+    g.map_diag(sns.histplot, fill=True, color=post_color, alpha=post_alpha, kde=True)
+    g.map_lower(sns.kdeplot, fill=True, color=post_color, alpha=post_alpha)
+
+    # Add prior, if given
+    if prior_draws is not None:
+        prior_draws_df = pd.DataFrame(prior_draws, columns=param_names)
+        g.data = prior_draws_df
+        g.map_diag(sns.histplot, fill=True, color=prior_color, alpha=prior_alpha, kde=True, zorder=-1)
+        g.map_lower(sns.kdeplot, fill=True, color=prior_color, alpha=prior_alpha, zorder=-1)
+
+    # Custom function to plot true_params on the diagonal
+    if true_params is not None:
+        def plot_true_params(x, **kwargs):
+            param = x.iloc[0]  # Get the single true value for the diagonal
+            plt.axvline(param, color="black", linestyle="--")  # Add vertical line
+
+        # only plot on the diagonal a vertical line for the true parameter
+        g.data = pd.DataFrame(true_params[np.newaxis], columns=param_names)
+        g.map_diag(plot_true_params)
+
+    # Add legend, if prior also given
+    if prior_draws is not None or prior is not None:
+        handles = [
+            Line2D(xdata=[], ydata=[], color=post_color, lw=3, alpha=post_alpha),
+            Line2D(xdata=[], ydata=[], color=prior_color, lw=3, alpha=prior_alpha),
+        ]
+        labels = ["Posterior", "Prior"]
+        if true_params is not None:
+            handles.append(Line2D(xdata=[], ydata=[], color="black", linestyle="--"))
+            labels.append("True Parameter")
+        g.fig.legend(handles, labels, fontsize=legend_fontsize, loc="center right")
+
+    # Remove upper axis
+    for i, j in zip(*np.triu_indices_from(g.axes, 1)):
+        g.axes[i, j].axis("off")
+
+    # Modify tick sizes
+    for i, j in zip(*np.tril_indices_from(g.axes, 1)):
+        g.axes[i, j].tick_params(axis="both", which="major", labelsize=tick_fontsize)
+        g.axes[i, j].tick_params(axis="both", which="minor", labelsize=tick_fontsize)
+
+    # Add nice labels
+    for i, param_name in enumerate(param_names):
+        g.axes[i, 0].set_ylabel(param_name, fontsize=label_fontsize)
+        g.axes[len(param_names) - 1, i].set_xlabel(param_name, fontsize=label_fontsize)
+
+    # Add grids
+    for i in range(n_params):
+        for j in range(n_params):
+            g.axes[i, j].grid(alpha=0.5)
+
+    g.tight_layout()
+    return g.fig
