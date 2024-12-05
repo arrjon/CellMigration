@@ -40,7 +40,8 @@ def plot_violin(ax, data, label, ylabel, alpha=0.05):
 
 
 def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, sumstats_list: list[list],
-                                weights: list = None, labels: list[str] = None, path: str = None):
+                                weights: list = None,
+                                labels: list[str] = None, colors: list[str] = None, path: str = None):
     """
     Plot the distribution of the wasserstein distance between the summary statistics of the test simulation and the
     simulations.
@@ -64,12 +65,13 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
     for i in range(marginal_distances_list[0].shape[1]):
         for j, marginal_distances in enumerate(marginal_distances_list):
             ax[i].hist(marginal_distances[:, i], bins=15, weights=weights, alpha=0.5, density=True,
-                       label=labels[j] if labels is not None and i == 0 else None)
+                       label=labels[j] if labels is not None and i == 0 else None,
+                       color=colors[j] if colors is not None else None)
         ax[i].set_title(name_plots[i])
         ax[i].set_xlabel('Normalized\nWasserstein Distance')
     ax[0].set_ylabel('Density')
     if labels is not None:
-        fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.1), ncol=3)
+        fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.1), ncol=len(labels) // 2)
     if path is not None:
         plt.savefig(path, bbox_inches='tight')
     plt.show()
