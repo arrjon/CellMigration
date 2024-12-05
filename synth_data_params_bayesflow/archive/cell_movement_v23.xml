@@ -1,0 +1,622 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<MorpheusModel version="4">
+    <Description>
+        <Details>a Collaborative project with Eva Kiermaier.</Details>
+        <Title>Cell_movement_grid_v22</Title>
+    </Description>
+    <Space>
+        <Lattice class="square">
+            <!--    <Disabled>
+        <Neighborhood>
+            <Order>1</Order>
+        </Neighborhood>
+    </Disabled>
+-->
+            <Size symbol="size" value="1173,2500,0"/>
+            <BoundaryConditions>
+                <Condition type="constant" boundary="x"/>
+                <Condition type="constant" boundary="y"/>
+                <Condition type="constant" boundary="-x"/>
+                <Condition type="constant" boundary="-y"/>
+            </BoundaryConditions>
+            <Neighborhood>
+                <Distance>2.0</Distance>
+            </Neighborhood>
+            <Domain boundary-type="noflux">
+                <!--    <Disabled>
+        <Circle diameter="500"/>
+    </Disabled>
+-->
+                <Image path="/Users/jonas.arruda/PyCharm Projects/CellMigration/synth_data_params_bayesflow/Cell_migration_grid_v3_final2_invers.tiff"/>
+            </Domain>
+            <!--    <Disabled>
+        <NodeLength symbol="nodeL" value="1.31"/>
+    </Disabled>
+-->
+        </Lattice>
+        <SpaceSymbol symbol="space"/>
+        <!--    <Disabled>
+        <MembraneLattice>
+            <Resolution symbol="memsize" value="25"/>
+            <SpaceSymbol symbol="m"/>
+        </MembraneLattice>
+    </Disabled>
+-->
+    </Space>
+    <Time>
+        <StartTime value="0"/>
+        <StopTime value="600000"/>
+        <TimeSymbol symbol="time"/>
+        <SaveInterval value="0"/>
+        <!--    <Disabled>
+        <RandomSeed value="0"/>
+    </Disabled>
+-->
+    </Time>
+    <Analysis>
+        <ModelGraph format="dot" reduced="true" include-tags="#untagged"/>
+        <!--    <Disabled>
+        <TiffPlotter format="guess" time-step="1.0" timelapse="false">
+            <Channel symbol-ref="u1"/>
+        </TiffPlotter>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <VtkPlotter time-step="5000">
+            <Channel symbol-ref="d_env" internal:disabled="true"/>
+            <Channel symbol-ref="u1" internal:disabled="true"/>
+            <Channel symbol-ref="dummy" internal:disabled="true"/>
+            <Channel symbol-ref="cell.id"/>
+        </VtkPlotter>
+    </Disabled>
+-->
+        <Logger time-step="30">
+            <Input>
+                <Symbol symbol-ref="nodeL"/>
+                <Symbol symbol-ref="cell.volume"/>
+                <Symbol symbol-ref="cell.center.x"/>
+                <Symbol symbol-ref="cell.center.y"/>
+            </Input>
+            <Output>
+                <TextOutput/>
+            </Output>
+        </Logger>
+        <!--    <Disabled>
+        <Gnuplotter time-step="500">
+            <Plot>
+                <Field symbol-ref="u1"/>
+                <Cells internal:disabled="true" value="cell.id"/>
+            </Plot>
+            <Terminal name="png"/>
+            <Plot internal:disabled="true">
+                <Field symbol-ref="u1"/>
+            </Plot>
+            <Plot>
+                <Field symbol-ref="dummy"/>
+                <Cells value="cell.id"/>
+            </Plot>
+            <Plot>
+                <Cells value="cell.id"/>
+                <Field symbol-ref="u1"/>
+            </Plot>
+        </Gnuplotter>
+    </Disabled>
+-->
+    </Analysis>
+    <CPM>
+        <Interaction>
+            <Contact type1="cells" type2="cells" value="40"/>
+            <Contact type1="cells" type2="medium" value="20"/>
+            <Contact type1="cells" type2="boundary" value="1000"/>
+        </Interaction>
+        <!--    <Disabled>
+        <ShapeSurface scaling="norm">
+            <Neighborhood>
+                <Order>1</Order>
+            </Neighborhood>
+        </ShapeSurface>
+    </Disabled>
+-->
+        <MonteCarloSampler stepper="edgelist">
+            <MCSDuration value="1"/>
+            <Neighborhood>
+                <Order>2</Order>
+            </Neighborhood>
+            <MetropolisKinetics yield="0.05" temperature="6"/>
+        </MonteCarloSampler>
+        <ShapeSurface scaling="norm">
+            <Neighborhood>
+                <Order>4</Order>
+            </Neighborhood>
+        </ShapeSurface>
+    </CPM>
+    <Global>
+        <!--    <Disabled>
+        <Field symbol="u2" value="1"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Field symbol="u3" value="0"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <System solver="Dormand-Prince [adaptive, O(5)]">
+            <DiffEqn symbol-ref="u1" name="CCL19">
+                <Expression>(a*l)-(k1*u1)*(u2)+(k2*u3)-(y*u1)</Expression>
+            </DiffEqn>
+            <DiffEqn symbol-ref="u2">
+                <Expression>-(k1*u1*u2)+k2*u3</Expression>
+            </DiffEqn>
+            <DiffEqn symbol-ref="u3">
+                <Expression>(k1*u1*u2)-k2*u3</Expression>
+            </DiffEqn>
+            <Constant symbol="a" value="0.3"/>
+            <Constant symbol="y" value="0.0"/>
+            <Constant symbol="k1" value="0.2"/>
+            <Constant symbol="k2" value="0.01"/>
+            <Function symbol="l">
+                <Expression>1/(2*pi*(10^2))*exp(-1/2*(((space.x*20)-(134.5*20))^2+
+((space.y*20)-(77*20))^2)/(10^2))*10000000000</Expression>
+            </Function>
+            <Function symbol="l">
+                <Expression>if(time == 10 and space.x>=130, 1.3, 
+if(time == 10 and space.x&lt;130 and space.x>=110, 1, 
+if(time == 10 and space.x&lt;110 and space.x>=90, 0.9,
+if(time == 10 and space.x&lt;90 and space.x>=70,0.7, if(time == 10 and space.x&lt;70 and space.x>=50,0.5,
+if(time == 10 and space.x&lt;50 and space.x>=30,0.3,
+if(time == 10 and space.x&lt;30 and space.x>=10,0.1,
+0)))))))</Expression>
+            </Function>
+            <Function symbol="l">
+                <Expression>if(sqrt(((space.x-150)^2)+((space.y-430)^2))&lt;=10,1,0)</Expression>
+            </Function>
+            <Constant symbol="l" value="1"/>
+            <Constant symbol="x1" value="150"/>
+            <Constant symbol="y1" value="430"/>
+            <Constant symbol="x2" value="50"/>
+            <Constant symbol="y2" value="50"/>
+        </System>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Field symbol="U" value="space.x / size.x">
+            <Diffusion rate="0.0"/>
+        </Field>
+    </Disabled>
+-->
+        <Constant symbol="c" value="0.0"/>
+        <!--    <Disabled>
+        <Event trigger="on-change" compute-time="on-trigger">
+            <Function symbol="l">
+                <Expression>if(space.x>=140, 1.4, 
+if(space.x&lt;140 and space.x>=100, 1, if(space.x&lt;100 and space.x>=60, 0.6,0.2)))</Expression>
+            </Function>
+            <Condition>0.0</Condition>
+        </Event>
+    </Disabled>
+-->
+        <Constant symbol="tumble.run_duration" value="0"/>
+        <!--    <Disabled>
+        <Field symbol="l" value="(space.x / size.x)/2">
+            <Diffusion rate="0.0"/>
+        </Field>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Field symbol="l" value="if(sqrt(((space.x-150)^2)+((space.y-430)^2))&lt;=10,1,0)"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Field symbol="u1" value="if((space.x-size.x/2-x0_num)^2+ (space.y-size.y/2-y0_num)^2&lt;(r_num)^2,2,0)">
+            <Diffusion rate="D_num"/>
+        </Field>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Constant symbol="nodeL" name="..." value="1.31"/>
+    </Disabled>
+-->
+        <Constant symbol="cell_nodes" name="CPM cell volume" value="30"/>
+        <Constant symbol="x0" name="position offset source in um" value="5000"/>
+        <Constant symbol="y0" name="position offset source in um" value="5000"/>
+        <Field symbol="dummy" value="-1"/>
+        <!--    <Disabled>
+        <Constant symbol="R" name="dish radius in um" value="16000/2"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Constant symbol="r" name="depot radius in um" value="1000/2"/>
+    </Disabled>
+-->
+        <Constant symbol="D" name="diffusion constant in um^2/s" value="1.42e+2"/>
+        <!--    <Disabled>
+        <Constant symbol="R_num" value="R/nodeL"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Constant symbol="r_num" value="r/nodeL"/>
+    </Disabled>
+-->
+        <Constant symbol="D_num" value="D/(nodeL*nodeL)"/>
+        <Constant symbol="x0_num" value="x0/nodeL"/>
+        <Constant symbol="y0_num" value="y0/nodeL"/>
+        <Constant symbol="sigma0" value="550"/>
+        <!--    <Disabled>
+        <Function symbol="Analytical_solution">
+            <Expression>1/(2*pi*(sigma0^2+2*D_num*time))*exp(-(((space.x)-(586))^2+((space.y)-(1900))^2)/(2*sigma0^2+4*D_num*time))
+</Expression>
+        </Function>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Function symbol="f_error" name="error">
+            <Expression>(u1-Analytical_solution)</Expression>
+        </Function>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Mapper>
+            <Input value="Analytical_solution"/>
+            <Output symbol-ref="Analytical_sum" mapping="sum"/>
+        </Mapper>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Variable symbol="Analytical_sum" value="0.0"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Variable symbol="f_error_sum" value="0.0"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Variable symbol="u1_sum" value="0.0"/>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Mapper>
+            <Input value="f_error"/>
+            <Output symbol-ref="f_error_sum" mapping="sum"/>
+        </Mapper>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Mapper>
+            <Input value="u1"/>
+            <Output symbol-ref="u1_sum" mapping="sum"/>
+        </Mapper>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Function symbol="Analytical_solution_t">
+            <Expression>0.0</Expression>
+        </Function>
+    </Disabled>
+-->
+        <!--    <Disabled>
+        <Field symbol="u2" value="0">
+            <TIFFReader filename="/media/emad/s/morpheus/Cell_movement_grid_v19_vs_analytical_v1_87/u1_00009.tif"/>
+        </Field>
+    </Disabled>
+-->
+        <Constant symbol="nodeL" value="1.31"/>
+        <Field symbol="u1" value="1000/(2*pi*(sigma0^2))*exp(-1/2*(((space.x)-(586))^2+ ((space.y)-(1900))^2)/(sigma0^2))">
+            <!--    <Disabled>
+        <Diffusion rate="D_num"/>
+    </Disabled>
+-->
+        </Field>
+    </Global>
+    <CellPopulations>
+        <Population type="cells" size="0">
+            <!--    <Disabled>
+        <InitRectangle number-of-cells="1" mode="regular">
+            <Dimensions origin="0.0, 0.0, 0.0" size="150, 75, 0"/>
+        </InitRectangle>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Cell id="1">
+            <Nodes>300 400 0 </Nodes>
+        </Cell>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Cell id="2">
+            <Nodes>50 70 0</Nodes>
+        </Cell>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Cell id="2">
+            <Nodes>40 40 0</Nodes>
+        </Cell>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Cell id="1">
+            <Nodes>300 80 0 </Nodes>
+        </Cell>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Cell id="1">
+            <Nodes>340 60 0 </Nodes>
+        </Cell>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Cell id="1">
+            <Nodes>500 80 0 </Nodes>
+        </Cell>
+    </Disabled>
+-->
+            <InitCircle number-of-cells="50" mode="random">
+                <Dimensions radius="50" center="size.x/2,size.y/3,0"/>
+            </InitCircle>
+        </Population>
+        <BoundaryValue boundary="domain" value="boundary"/>
+    </CellPopulations>
+    <CellTypes>
+        <!--    <Disabled>
+        <CellType class="biological" name="cells">
+            <VolumeConstraint target="cell_nodes" strength="1"/>
+            <Mapper>
+                <Input value="u1"/>
+                <Output symbol-ref="s" mapping="average"/>
+            </Mapper>
+            <Constant symbol="move.duration.median" value="972.3305666873691"/>
+            <Constant symbol="move.duration.scale" value="96899.44860996476"/>
+            <Property symbol="tumble.last" name="last tumble event" value="0"/>
+            <Property symbol="tumble.run_duration" name="run duration" value="0.0"/>
+            <Constant symbol="move.strength" name="strength of movement" value="0.21359842373064927*0.01"/>
+            <Event time-step="100" name="init">
+                <Condition>time == 0</Condition>
+                <VectorRule symbol-ref="cell.center.initial">
+                    <Expression>cell.center</Expression>
+                </VectorRule>
+            </Event>
+            <Event trigger="when-true" time-step="5" name="tumble">
+                <Condition>time >= tumble.last + tumble.run_duration</Condition>
+                <Rule symbol-ref="tumble.last">
+                    <Expression>time</Expression>
+                </Rule>
+                <Rule symbol-ref="tumble.run_duration" name="new update time">
+                    <Expression>rand_gamma(move.duration.median/move.duration.scale,move.duration.scale)</Expression>
+                </Rule>
+                <Intermediate symbol="alpha" value="rand_uni(0,2*pi)"/>
+                <Intermediate symbol="" internal:disabled="true" value="0.0"/>
+                <Intermediate symbol="env_taxis" internal:disabled="true" value=""/>
+                <IntermediateVector symbol="biased_rand_dir" internal:disabled="true" value="d_env * move.dir.x + cos(alpha), d_env * move.dir.y + sin(alpha) , 0"/>
+                <VectorRule symbol-ref="move.dir">
+                    <Expression>d_env * move.dir.x / move.dir.abs + (1-d_env)*cos(alpha), d_env * move.dir.y / move.dir.abs + (1-d_env)*sin(alpha) , 0</Expression>
+                </VectorRule>
+            </Event>
+            <DirectedMotion direction="move.dir" strength="move.strength"/>
+            <VectorEquation symbol-ref="cell.center.relative">
+                <Expression>cell.center - cell.center.initial</Expression>
+            </VectorEquation>
+            <PropertyVector symbol="cell.center.relative" value="0.0, 0.0, 0.0"/>
+            <PropertyVector symbol="cell.center.initial" value="0,0,0"/>
+            <System time-step="5.0" solver="Dormand-Prince [adaptive, O(5)]">
+                <Rule symbol-ref="cell.running_env" internal:disabled="true">
+                    <Expression>exp(-5/AA) * cell.running_env + (1-exp(-5/AA)) * s</Expression>
+                </Rule>
+                <Rule symbol-ref="d_env" internal:disabled="true">
+                    <Expression>atan(BB*(s - cell.running_env))/pi*2</Expression>
+                </Rule>
+                <VectorRule symbol-ref="move.dir" internal:disabled="true">
+                    <Expression>move.dir / move.dir.abs</Expression>
+                </VectorRule>
+            </System>
+            <Property symbol="s" value="0.0"/>
+            <PropertyVector symbol="move.dir" value="1.0, rand_uni(0,2*pi), 0.0"/>
+            <Property symbol="d_env" value="0.0"/>
+            <Constant symbol="gradient_strength" value="5.e+5"/>
+            <Chemotaxis strength="gradient_strength" field="u1"/>
+            <Constant symbol="pi" value="3.14159265359"/>
+        </CellType>
+    </Disabled>
+-->
+        <CellType class="medium" name="medium">
+            <Property symbol="l_U" value="0"/>
+            <!--    <Disabled>
+        <Property symbol="d_env" value="-1"/>
+    </Disabled>
+-->
+        </CellType>
+        <CellType class="medium" name="boundary"/>
+        <CellType class="biological" name="cells">
+            <!--    <Disabled>
+        <Chemotaxis retraction="true" strength="100*(A)" field="u3"/>
+    </Disabled>
+-->
+            <VolumeConstraint target="cell_nodes" strength="1"/>
+            <!--    <Disabled>
+        <SurfaceConstraint target="12" strength="0.005" mode="aspherity"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <LengthConstraint target="2* cell_radius" strength="1" mode="length"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <MembraneProperty symbol="A" name="A" value="0.5">
+            <Diffusion rate="0.05"/>
+        </MembraneProperty>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <MembraneProperty symbol="B" name="B" value="0.5">
+            <Diffusion rate="1"/>
+        </MembraneProperty>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <MembraneProperty symbol="c" name="chemotactic strength" value="0">
+            <Diffusion rate="0"/>
+        </MembraneProperty>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <MembraneProperty symbol="s" name="signal" value="0">
+            <Diffusion rate="0"/>
+        </MembraneProperty>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Property symbol="l_U" value="0"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <System time-step="1.0" name="WavePinning" solver="Dormand-Prince [adaptive, O(5)]">
+            <Constant symbol="k_0" value="0.067"/>
+            <Constant symbol="gamma" value="1"/>
+            <Constant symbol="delta" value="0.25"/>
+            <Constant symbol="K" value="1"/>
+            <Constant symbol="sigma" name="spatial-length-signal" value="5.0"/>
+            <Constant symbol="n" name="Hill coefficient" value="4"/>
+            <Intermediate symbol="F" value="B*(k_0+ s + (gamma*A^n) / (K^n + A^n) ) - delta*A"/>
+            <DiffEqn symbol-ref="A">
+                <Expression>F</Expression>
+            </DiffEqn>
+            <DiffEqn symbol-ref="B">
+                <Expression>-F</Expression>
+            </DiffEqn>
+            <Rule symbol-ref="c">
+                <Expression>A^2*1000</Expression>
+            </Rule>
+        </System>
+    </Disabled>
+-->
+            <Mapper>
+                <Input value="u1"/>
+                <Output symbol-ref="s" mapping="average"/>
+            </Mapper>
+            <!--    <Disabled>
+        <Constant symbol="move.duration.scale" value="96899.44860996476"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Constant symbol="move.duration.median" value="972.3305666873691"/>
+    </Disabled>
+-->
+            <Constant symbol="move.duration.scale" value="30"/>
+            <Constant symbol="move.duration.shape" value="1"/>
+            <!--    <Disabled>
+        <Constant symbol="move.duration.mean" value="100"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Constant symbol="AA_val" value="90.75334533127302"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Constant symbol="AA" name="env memory decay time" value="move.duration.median / AA_val"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Constant symbol="BB" name="env_grad_sensitivity" value="44.421145587716545"/>
+    </Disabled>
+-->
+            <Constant symbol="move.strength" name="strength of movement" value="0.1"/>
+            <Property symbol="tumble.run_duration" name="run duration" value="0.0"/>
+            <Property symbol="tumble.last" name="last tumble event" value="0"/>
+            <DirectedMotion direction="move.dir" name="Persistent.Random.Walk" strength="move.strength"/>
+            <Event trigger="when-true" time-step="5" name="tumble">
+                <Condition>time >= tumble.last + tumble.run_duration</Condition>
+                <Rule symbol-ref="tumble.last">
+                    <Expression>time</Expression>
+                </Rule>
+                <!--    <Disabled>
+        <Rule symbol-ref="tumble.run_duration" name="new update time">
+            <Expression>rand_gamma(move.duration.median/move.duration.scale,move.duration.scale)</Expression>
+        </Rule>
+    </Disabled>
+-->
+                <Rule symbol-ref="tumble.run_duration" name="new update time">
+                    <Expression>rand_gamma(move.duration.shape, move.duration.scale)    </Expression>
+                </Rule>
+                <Intermediate symbol="alpha" value="rand_uni(0,2*pi)"/>
+                <!--    <Disabled>
+        <Intermediate symbol="" value="0.0"/>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <Intermediate symbol="env_taxis" value=""/>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <IntermediateVector symbol="biased_rand_dir" value="d_env * move.dir.x + cos(alpha), d_env * move.dir.y + sin(alpha) , 0"/>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <Intermediate symbol="x_dir" value="d_env * move.dir.x / move.dir.abs + (1-d_env)*cos(alpha)"/>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <Intermediate symbol="y_dir" value="d_env * move.dir.y / move.dir.abs + (1-d_env)*sin(alpha)"/>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <Intermediate symbol="dir_magnitude" value="sqrt(x_dir * x_dir + y_dir * y_dir) "/>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <VectorRule symbol-ref="move.dir">
+            <Expression>x_dir / dir_magnitude, y_dir / dir_magnitude, 0 </Expression>
+        </VectorRule>
+    </Disabled>
+-->
+                <VectorRule symbol-ref="move.dir" name="random direction" notation="x,y,z">
+                    <Expression>cos(alpha), sin(alpha) , 0</Expression>
+                </VectorRule>
+            </Event>
+            <Event time-step="100" name="init">
+                <Condition>time == 0</Condition>
+                <VectorRule symbol-ref="cell.center.initial">
+                    <Expression>cell.center</Expression>
+                </VectorRule>
+            </Event>
+            <PropertyVector symbol="cell.center.initial" value="0,0,0"/>
+            <PropertyVector symbol="cell.center.relative" value="0.0, 0.0, 0.0"/>
+            <VectorEquation symbol-ref="cell.center.relative">
+                <Expression>cell.center - cell.center.initial</Expression>
+            </VectorEquation>
+            <System time-step="5.0" solver="Dormand-Prince [adaptive, O(5)]">
+                <!--    <Disabled>
+        <Rule symbol-ref="cell.running_env">
+            <Expression>exp(-5/AA) * cell.running_env + (1-exp(-5/AA)) * s</Expression>
+        </Rule>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <Rule symbol-ref="d_env">
+            <Expression>atan(BB*(s - cell.running_env))/pi*2</Expression>
+        </Rule>
+    </Disabled>
+-->
+                <!--    <Disabled>
+        <VectorRule symbol-ref="move.dir">
+            <Expression>move.dir / move.dir.abs</Expression>
+        </VectorRule>
+    </Disabled>
+-->
+            </System>
+            <!--    <Disabled>
+        <Property symbol="cell.running_env" value="s"/>
+    </Disabled>
+-->
+            <!--    <Disabled>
+        <Property symbol="d_env" value="0.0"/>
+    </Disabled>
+-->
+            <Constant symbol="alpha_start" value="rand_uni(0,2*pi) "/>
+            <PropertyVector symbol="move.dir" value="cos(alpha_start), sin(alpha_start), 0 "/>
+            <Property symbol="s" value="0.0"/>
+            <Constant symbol="pi" value="3.14159265359"/>
+            <Chemotaxis strength="gradient_strength" field="u1"/>
+            <Constant symbol="gradient_strength" value="5.e+5"/>
+        </CellType>
+    </CellTypes>
+</MorpheusModel>

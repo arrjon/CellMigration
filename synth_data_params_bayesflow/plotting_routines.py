@@ -39,6 +39,43 @@ def plot_violin(ax, data, label, ylabel, alpha=0.05):
         ax.set_title(f'{label}\n')
 
 
+def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, sumstats_list: list[list],
+                                weights: list = None, labels: list[str] = None, path: str = None):
+    """
+    Plot the distribution of the wasserstein distance between the summary statistics of the test simulation and the
+    simulations.
+    """
+    if labels is not None:
+        if len(labels) != len(sumstats_list):
+            raise ValueError("The number of labels should be equal to the number of summary statistics lists")
+
+    marginal_distances_list = []
+    for sumstats in sumstats_list:
+        # compute the distance for each hand-crafted summary statistics
+        marginal_distances = np.zeros((len(sumstats), len(test_sim_dict.keys())))
+        for i, st in enumerate(sumstats):
+            marginal_distances[i] = obj_func_wass(test_sim_dict, st, return_marginal=True, normalize=True)
+
+        marginal_distances_list.append(marginal_distances)
+
+    fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], figsize=(10, 3), tight_layout=True)
+    name_plots = ['Angle Degree\n', 'Mean Squared\nDisplacement', 'Turning Angle\n', 'Velocity\n', 'Waiting Time\n']
+
+    for i in range(marginal_distances_list[0].shape[1]):
+        for j, marginal_distances in enumerate(marginal_distances_list):
+            ax[i].hist(marginal_distances[:, i], bins=15, weights=weights, alpha=0.5, density=True,
+                       label=labels[j] if labels is not None and i == 0 else None)
+        ax[i].set_title(name_plots[i])
+        ax[i].set_xlabel('Normalized\nWasserstein Distance')
+    ax[0].set_ylabel('Density')
+    if labels is not None:
+        fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.1), ncol=3)
+    if path is not None:
+        plt.savefig(path, bbox_inches='tight')
+    plt.show()
+    return
+
+
 def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = None, compare_n: int = 5,
                                seed: int = 42):
     """
@@ -136,6 +173,7 @@ def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
     ax[1].plot(posterior_sim[0, :, 0], posterior_sim[0, :, 1], 'b', label='Simulated Trajectories', alpha=1)
     for cell_id in range(1, cells_in_population):
         ax[1].plot(posterior_sim[cell_id, :, 0], posterior_sim[cell_id, :, 1], 'b')
+        ax[1].scatter(posterior_sim[cell_id, :, 0], posterior_sim[cell_id, :, 1], s=10, color='blue')
 
     # plot the synthetic data
     if show_image:
@@ -146,6 +184,7 @@ def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
     ax[0].plot(test_sim[0, :, 0], test_sim[0, :, 1], 'r', label=label_true, alpha=1)
     for cell_id in range(1, cells_in_population):
         ax[0].plot(test_sim[cell_id, :, 0], test_sim[cell_id, :, 1], 'r')
+        ax[0].scatter(test_sim[cell_id, :, 0], test_sim[cell_id, :, 1], s=10, color='red')
 
     ax[0].set_ylabel('y')
     for a in ax:

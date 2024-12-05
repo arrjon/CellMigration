@@ -7,16 +7,51 @@ import tidynamics  # to get sliding history stats in N*logN instead of N^2
 
 
 # defining the summary statistics functions
-def turning_angle(data_dict):
+def _turning_angle(x, y):
     """Compute the angle between two consecutive points."""
-    x = data_dict['x']
-    y = data_dict['y']
     vx = np.diff(x)
     vy = np.diff(y)
     theta = np.arctan2(vy, vx)
     theta = np.unwrap(theta)
     theta = np.diff(theta)
     return theta
+
+
+def turning_angle(data_dict):
+    """Compute the angle between two consecutive points, skipping segments with NaN."""
+    x = np.array(data_dict['x'])
+    y = np.array(data_dict['y'])
+
+    # Find valid points (both x and y are not NaN)
+    valid_mask = ~np.isnan(x) & ~np.isnan(y)
+
+    # Initialize the list of turning angles
+    turning_angles = []
+
+    # Iterate through the valid mask to find continuous valid segments
+    current_segment = []
+    for i in range(len(valid_mask)):
+        if valid_mask[i]:
+            current_segment.append(i)
+        else:
+            # If we hit a NaN, process the current segment and reset
+            if len(current_segment) > 1:
+                segment_x = x[current_segment]
+                segment_y = y[current_segment]
+                # Compute turning angles for this segment
+                ta = _turning_angle(segment_x, segment_y)
+                turning_angles.extend(ta)
+            current_segment = []
+
+    # Process the last segment if it exists
+    if len(current_segment) > 1:
+        segment_x = x[current_segment]
+        segment_y = y[current_segment]
+        ta = _turning_angle(segment_x, segment_y)
+        turning_angles.extend(ta)
+
+    return np.array(turning_angles)
+
 
 
 def velocity(data_dict):
@@ -29,11 +64,40 @@ def velocity(data_dict):
     return v
 
 
-def MSD(data_dict, x_name="x", y_name="y"):
-    """Compute the mean square displacement of the cell."""
+def MSD_tidy(data_dict, x_name="x", y_name="y"):  # this should be used by abc because it is faster
+    """Compute the mean square displacement of the cell for all possible time lags.
+    If nan values are present, return nan."""
     msd = tidynamics.msd(
         np.column_stack([data_dict[x_name], data_dict[y_name]]))
     return msd
+
+
+
+def MSD(data_dict, x_name="x", y_name="y", all_time_lags: bool = False):
+    """Compute the mean square displacement of the cell, handling NaN values."""
+    # Extract data
+    x = data_dict[x_name]
+    y = data_dict[y_name]
+
+    # Combine x and y, maintaining the original length with NaNs
+    data = np.column_stack([x, y])
+
+    # Calculate MSD using tidynamics, treating NaNs correctly
+    msd = []
+    for lag in range(1, len(data) if all_time_lags else 2):
+        diffs = []
+        for t in range(len(data) - lag):
+            # Ensure both points at t and t+lag are valid
+            if not (np.isnan(x[t]) or np.isnan(x[t + lag]) or np.isnan(y[t]) or np.isnan(y[t + lag])):
+                dx = data[t + lag, 0] - data[t, 0]
+                dy = data[t + lag, 1] - data[t, 1]
+                diffs.append(dx ** 2 + dy ** 2)
+        if diffs:
+            msd.append(np.mean(diffs))
+        else:
+            msd.append(np.nan)  # If no valid pairs exist for this lag
+
+    return np.array(msd)
 
 
 def angle_degree(data_dict):
@@ -124,28 +188,32 @@ def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optiona
     return obs_list
 
 
-def compute_mean(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
+def compute_mean(x: Union[float, int, list, np.ndarray]) -> Union[float, np.floating]:
     """
     Compute the mean if x is a non-empty list.
     Return x if it's a float/int.
     Return np.nan if it's an empty list or unrecognized type.
     """
     if isinstance(x, (list, np.ndarray)):
-        return np.mean(x) if len(x) > 0 else np.nan
+        if len(x) == 0:
+            return np.nan
+        return np.nanmean(x)
     elif isinstance(x, (int, float)):
         return x
     else:
         return np.nan
 
 
-def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
+def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, np.floating]:
     """
     Compute the variance if x is a non-empty list.
     Return x if it's a float/int.
     Return np.nan if it's an empty list or unrecognized type.
     """
     if isinstance(x, (list, np.ndarray)):
-        return np.var(x) if len(x) > 0 else np.nan
+        if len(x) == 0:
+            return np.nan
+        return np.nanvar(x)
     elif isinstance(x, (int, float)):
         return 0.0
     else:
@@ -197,6 +265,24 @@ def compute_summary_stats(cell_population: np.ndarray) -> (list, list, list, lis
             wt_list.append(mean_waiting_time(sim_dict))
 
     return msd_list, ta_list, v_list, ad_list, wt_list
+
+
+def compute_MSD_lags(cell_population: np.ndarray) -> np.ndarray:
+    """
+    Compute the mean square displacement of the cell population for all possible time lags.
+
+    :param cell_population: 3D array of cell populations
+    :return: array of mean square displacements
+    """
+    msd_list = []
+    cell_count = cell_population.shape[0]
+    for i in range(0, cell_count):
+        sim_dict = {'x': cell_population[i, :, 0], 'y': cell_population[i, :, 1]}
+        if all(np.isnan(sim_dict['x'])):
+            continue
+        else:
+            msd_list.append(MSD(sim_dict, all_time_lags=True))
+    return np.stack(msd_list, axis=0)
 
 
 def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
