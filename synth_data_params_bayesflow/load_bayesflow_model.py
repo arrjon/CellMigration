@@ -146,10 +146,89 @@ def configurator(
     return out_dict
 
 
+class SummaryNetwork(tf.keras.Model):
+    """Network to summarize the population of cells."""
+
+    def __init__(
+            self,
+            summary_dim,
+            num_conv_layers=2,
+            rnn_units=128,
+            bidirectional=True,
+            conv_settings=None,
+            use_GRU=True,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+
+        if conv_settings is None:
+            conv_settings = defaults.DEFAULT_SETTING_MULTI_CONV
+        self.conv_settings = conv_settings
+
+        self.conv = Sequential([MultiConv1D(conv_settings) for _ in range(num_conv_layers)])
+        self.num_conv_layers = num_conv_layers
+        self.rnn_units = rnn_units
+        self.use_GRU = use_GRU
+        self.bidirectional = bidirectional
+
+
+        if use_GRU:
+            self.rnn = Bidirectional(GRU(rnn_units)) if bidirectional else GRU(rnn_units)
+        else:
+            self.rnn = Bidirectional(LSTM(rnn_units)) if bidirectional else LSTM(rnn_units)
+
+        self.out_layer = Dense(summary_dim, activation="linear")
+        self.summary_dim = summary_dim
+
+    def call(self, x, **kwargs):
+        """Performs a forward pass through the network by first passing `x` through the rnn network.
+
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input of shape (batch_size, n_groups, n_time_steps, n_features)
+
+        Returns
+        -------
+        out : tf.Tensor
+            Output of shape (batch_size, summary_dim)
+        """
+        # transform (batch_size, n_groups, n_time_steps, n_features) to (batch_size, n_time_steps, n_groups*n_features)
+        out = tf.transpose(x, [0, 2, 1, 3])  # transpose to (batch_size, n_time_steps, n_groups, n_features)
+        out = tf.reshape(out, [-1, out.shape[1], out.shape[2] * out.shape[3]])
+
+        # Apply the RNN
+        out = self.conv(out, **kwargs)
+        out = self.rnn(out, **kwargs)  # (batch_size, lstm_units)
+        # bidirectional LSTM returns 2*lstm_units
+
+        # apply dense layer
+        out = self.out_layer(out, **kwargs)  # (batch_size, summary_dim)
+        return out
+
+    def get_config(self):
+        """Return the config for serialization."""
+        config = super().get_config()
+        config.update({
+            'summary_dim': self.summary_dim,
+            'num_conv_layers': self.num_conv_layers,
+            'rnn_units': self.rnn_units,
+            'bidirectional': self.bidirectional,
+            'conv_settings': self.conv_settings,
+            'use_GRU': self.use_GRU,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        """Recreate the model from the config."""
+        return cls(**config)
+
+
 # define the network
 class GroupSummaryNetwork(tf.keras.Model):
     """Network to summarize the data of groups of cells.  Each group is passed through a series of convolutional layers
-    followed by an LSTM layer. The output of the LSTM layer is then pooled across the groups and dense layer applied
+    followed by a GRU layer. The output of the GRU layer is then pooled across the groups and dense layer applied
     to obtain a summary of fixed dimensionality. The network is invariant to the order of the groups.
     """
 
@@ -197,7 +276,7 @@ class GroupSummaryNetwork(tf.keras.Model):
 
     def call(self, x, **kwargs):
         """Performs a forward pass through the network by first passing `x` through the same rnn network for
-        each household and then pooling the outputs across households.
+        each cell and then pooling the outputs across cells.
 
         Parameters
         ----------
@@ -346,6 +425,7 @@ def load_model(model_id: int,
     summary_loss = 'MMD'
     use_manual_summary = False
     include_real = None
+    summary_net = None  # will be defined later
     if model_id == 0:
         checkpoint_path = 'amortizer-cell-migration-attention-6'
         map_idx_sim = 52
@@ -394,21 +474,29 @@ def load_model(model_id: int,
                                  summary_valid_max, summary_valid_min, generative_model)
             trainers.append(trainer)
         return EnsembleTrainer(trainers), np.nan  # no map_idx_sim for ensemble model
+    elif model_id == 9:
+        checkpoint_path = 'amortizer-cell-migration-GRU-8-manual'
+        num_coupling_layers = 8
+        use_manual_summary = True
+        map_idx_sim = np.nan
+        summary_net = SummaryNetwork(
+            summary_dim=n_params * 2,
+            rnn_units=32,
+            bidirectional=use_bidirectional
+        )
     else:
         raise ValueError('Checkpoint path not found')
 
     if on_cluster:
         checkpoint_path = "/home/jarruda_hpc/CellMigration/synth_data_params_bayesflow/" + checkpoint_path
 
-    if include_real is None:
+    if include_real is None and summary_net is None:
         summary_net = GroupSummaryNetwork(
             summary_dim=n_params * 2,
             rnn_units=32,
             use_attention=use_attention,
             bidirectional=use_bidirectional
         )
-    else:
-        summary_net = None
 
     inference_net = InvertibleNetwork(
         num_params=n_params,
