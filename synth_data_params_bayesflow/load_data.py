@@ -20,7 +20,7 @@ def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: 
         x_offset, y_offset = -7.5, -2  # correction such that the pillars are in the middle
         y_lin_shift = 0
     else:
-        # more important data set, closer to the truth
+        # more important data set, closer to what we expect
         real_data_df = pd.read_csv('../real_data/37C_ctrl2.csv')
         y_size = 882.94  # microns
         x_size = 287.03  # microns

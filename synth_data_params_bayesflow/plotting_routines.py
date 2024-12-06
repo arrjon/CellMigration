@@ -89,12 +89,11 @@ def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = 
         raise ValueError("The test simulation should only have one population")
 
     np.random.seed(seed)
-    factor = 1.31  # to scale to real world coordinates, assumes that data is Morpheus coordinates
 
     # compute the summary statistics
-    synthetic_summary_stats_list = [reduced_coordinates_to_sumstat(t * factor) for t in
+    synthetic_summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in
                                     test_sim]  # should be only one population
-    simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim * factor) for pop_sim in posterior_sim]
+    simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim) for pop_sim in posterior_sim]
 
     # compute the mean of the summary statistics
     (ad_mean_synth, ad_mean_synth_averg,

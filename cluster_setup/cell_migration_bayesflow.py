@@ -280,17 +280,6 @@ else:
 
 test_posterior_samples = trainer.amortizer.sample(trainer.configurator(test_sim_full), n_samples=100)
 test_posterior_samples = test_posterior_samples * p_std + p_mean
-test_posterior_samples_median = np.median(test_posterior_samples, axis=0)
-
-# compute the log posterior of the test data
-input_dict = {
-    'sim_data': np.repeat(test_sim, repeats=100, axis=0),
-    'parameters': test_posterior_samples
-}
-log_prob = trainer.amortizer.log_posterior(trainer.configurator(input_dict))
-
-# get the MAP
-map_idx = np.argmax(log_prob)
 
 # %%
 # get posterior samples and simulate
@@ -298,9 +287,6 @@ if not os.path.exists(trainer.checkpoint_path + '/posterior_sim.npy'):
     # simulate the data
     posterior_sim = bayes_simulator(test_posterior_samples)['sim_data']
     np.save(trainer.checkpoint_path + '/posterior_sim.npy', posterior_sim)
-
-    print('map_sim', map_idx, log_prob[map_idx], test_posterior_samples[map_idx])
-    map_idx_sim = map_idx
 else:
     posterior_sim = np.load(trainer.checkpoint_path+'/posterior_sim.npy')
     map_sim = posterior_sim[map_idx_sim]
@@ -325,7 +311,6 @@ if trainer.amortizer.summary_loss is not None:
     fig.savefig(f'{trainer.checkpoint_path}/Synthetic MMD.png', bbox_inches='tight')
     plt.show()
 
-print('Map idx:', map_idx)
 print(f"Validation loss: {np.min(history['val_losses'])}")
 print(f"Wasserstein distance: {wasserstein_distance}")
 del trainer
