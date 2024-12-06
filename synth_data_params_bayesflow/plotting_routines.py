@@ -71,7 +71,8 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
         ax[i].set_xlabel('Normalized\nWasserstein Distance')
     ax[0].set_ylabel('Density')
     if labels is not None:
-        fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.1), ncol=len(labels) // 2)
+        fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15),
+                   ncol=len(labels) // 2 if len(labels) > 3 else len(labels))
     if path is not None:
         plt.savefig(path, bbox_inches='tight')
     plt.show()
