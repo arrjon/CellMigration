@@ -403,6 +403,7 @@ def plot_posterior_2d(
     label_fontsize=14,
     legend_fontsize=16,
     tick_fontsize=12,
+    bins="auto",
     post_color="#8f2727",
     prior_color="gray",
     post_alpha=0.9,
@@ -429,6 +430,8 @@ def plot_posterior_2d(
         The font size of the legend text
     tick_fontsize     : int, optional, default: 12
         The font size of the axis ticklabels
+    bins              : int or 'auto' or None, optional, default: 'auto'
+        The number of bins for the histograms. If None, the default from seaborn is used
     post_color        : str, optional, default: '#8f2727'
         The color for the posterior histograms and KDEs
     priors_color      : str, optional, default: gray
@@ -482,14 +485,14 @@ def plot_posterior_2d(
 
     # Add posterior
     g = sns.PairGrid(posterior_draws_df, height=height)
-    g.map_diag(sns.histplot, fill=True, color=post_color, alpha=post_alpha, kde=True)
+    g.map_diag(sns.histplot, fill=True, color=post_color, alpha=post_alpha, bins=bins, kde=True)
     g.map_lower(sns.kdeplot, fill=True, color=post_color, alpha=post_alpha)
 
     # Add prior, if given
     if prior_draws is not None:
         prior_draws_df = pd.DataFrame(prior_draws, columns=param_names)
         g.data = prior_draws_df
-        g.map_diag(sns.histplot, fill=True, color=prior_color, alpha=prior_alpha, kde=True, zorder=-1)
+        g.map_diag(sns.histplot, fill=True, color=prior_color, alpha=prior_alpha, bins=bins, kde=True, zorder=-1)
         g.map_lower(sns.kdeplot, fill=True, color=prior_color, alpha=prior_alpha, zorder=-1)
 
     # Custom function to plot true_params on the diagonal

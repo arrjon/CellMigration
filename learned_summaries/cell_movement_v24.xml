@@ -17,7 +17,7 @@
                 <Distance>2.0</Distance>
             </Neighborhood>
             <Domain boundary-type="noflux">
-                <Image path="/Users/jonas.arruda/PyCharm Projects/CellMigration/synth_data_params_bayesflow/Cell_migration_grid_v3_final2_invers.tiff"/>
+                <Image path="/Users/jonas.arruda/PyCharm Projects/CellMigration/learned_summaries/Cell_migration_grid_v3_final2_invers.tiff"/>
             </Domain>
         </Lattice>
         <SpaceSymbol symbol="space"/>
