@@ -295,6 +295,7 @@ def sampling_parameter_cis(
     true_param: np.ndarray = None,
     param_names: list[str] = None,
     alpha: list[int] = None,
+    color_list: list[str] = None,
     step: float = 0.05,
     show_median: bool = True,
     title: str = None,
@@ -337,8 +338,9 @@ def sampling_parameter_cis(
             ax.fill(
                 np.append(x1, x1[::-1]),
                 np.append(y1, y2[::-1]),
-                color=colors[n],
+                color=colors[n] if color_list is None else color_list[npar],
                 label=str(level) + "% CI",
+                alpha=None if color_list is None else 1 / (len(alpha_sorted) - n),
             )
 
             if show_median:
@@ -372,11 +374,21 @@ def sampling_parameter_cis(
     if title:
         ax.set_title(title)
 
-    # handle legend
+        # handle legend
     plt.gca().invert_yaxis()
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=legend_bbox_to_anchor)
+    if color_list is not None:
+        handles_new = []
+        labels_new = labels[:len(alpha_sorted)]
+        for i in range(len(alpha_sorted)):
+            handles_new.append(Patch(color='grey', alpha=1 / (len(alpha_sorted) - i), label=labels_new[i]))
+        if true_param is not None or show_median:
+            handles_new.append(handles[-1])
+            labels_new.append(labels[-1])
+        ax.legend(handles=handles_new, labels=labels_new, bbox_to_anchor=legend_bbox_to_anchor)
+    else:
+        ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=legend_bbox_to_anchor)
 
     return ax
 
