@@ -7,7 +7,7 @@ import tidynamics  # to get sliding history stats in N*logN instead of N^2
 
 
 # defining the summary statistics functions
-def _turning_angle(x, y):
+def _turning_angle(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Compute the angle between two consecutive points."""
     vx = np.diff(x)
     vy = np.diff(y)
@@ -17,7 +17,7 @@ def _turning_angle(x, y):
     return theta
 
 
-def turning_angle(data_dict):
+def turning_angle(data_dict: dict) -> np.ndarray:
     """Compute the angle between two consecutive points, skipping segments with NaN."""
     x = np.array(data_dict['x'])
     y = np.array(data_dict['y'])
@@ -54,7 +54,7 @@ def turning_angle(data_dict):
 
 
 
-def velocity(data_dict):
+def velocity(data_dict: dict) -> np.ndarray:
     """Compute the velocity of the cell."""
     x = data_dict['x']
     y = data_dict['y']
@@ -64,16 +64,18 @@ def velocity(data_dict):
     return v
 
 
-def MSD_tidy(data_dict, x_name="x", y_name="y"):  # this should be used by abc because it is faster
+def MSD_tidy(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> Union[np.ndarray, float]:  # this should be used as it is faster
     """Compute the mean square displacement of the cell for all possible time lags.
     If nan values are present, return nan."""
     msd = tidynamics.msd(
         np.column_stack([data_dict[x_name], data_dict[y_name]]))
+    if not all_time_lags:
+        return msd[1]
     return msd
 
 
 
-def MSD(data_dict, x_name="x", y_name="y", all_time_lags: bool = False):
+def MSD_nan(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> np.ndarray:
     """Compute the mean square displacement of the cell, handling NaN values."""
     # Extract data
     x = data_dict[x_name]
@@ -96,11 +98,17 @@ def MSD(data_dict, x_name="x", y_name="y", all_time_lags: bool = False):
             msd.append(np.mean(diffs))
         else:
             msd.append(np.nan)  # If no valid pairs exist for this lag
-
     return np.array(msd)
 
 
-def angle_degree(data_dict):
+def MSD(data_dict: dict, x_name="x", y_name="y", all_time_lags: bool = True) -> Union[np.ndarray, float]:  # this should be used by abc because it is faster
+    """Compute the mean square displacement of the cell for all possible time lags."""
+    if np.isnan(data_dict[x_name]).any() or np.isnan(data_dict[y_name]).any():
+        return MSD_nan(data_dict, x_name, y_name, all_time_lags)
+    return MSD_tidy(data_dict, x_name, y_name, all_time_lags)
+
+
+def angle_degree(data_dict: dict) -> np.ndarray:
     """Compute the absolute angle between two consecutive points in degrees with respect to the x-axis."""
     x = data_dict['x']
     y = data_dict['y']
@@ -109,10 +117,10 @@ def angle_degree(data_dict):
     list_angle_degrees = []
     for x, y in zip(vx, vy):
         list_angle_degrees.append(math.degrees(math.atan2(x, y)))
-    return list_angle_degrees
+    return np.array(list_angle_degrees)
 
 
-def mean_waiting_time(data_dict, time_interval=30., threshold=np.pi/4):
+def mean_waiting_time(data_dict: dict, time_interval: float =30., threshold: float = np.pi/4) -> Union[np.ndarray, float]:
     """Compute the mean waiting time of the cell until it changes direction."""
     cell = np.stack([data_dict['x'], data_dict['y']], axis=1)
     time_steps = len(data_dict['x'])
@@ -143,7 +151,7 @@ def mean_waiting_time(data_dict, time_interval=30., threshold=np.pi/4):
 
 
 # my functions
-def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optional[list[dict]]:
+def cut_region(data_dict: dict, x_min: int, x_max: int, y_min: int, y_max: int, return_longest: bool) -> Optional[list[dict]]:
     """
     Cut the region of interest from the data.
     Truncate the data to the longest list if 'return_longest' is True.

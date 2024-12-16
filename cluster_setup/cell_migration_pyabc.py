@@ -8,6 +8,7 @@ from functools import partial
 from typing import Optional
 from typing import Union
 
+import keras
 import numpy as np
 import pandas as pd
 import pyabc
@@ -479,6 +480,84 @@ def configurator(forward_dict: dict,
         out_dict['parameters'] = params.astype(np.float32)
     return out_dict
 
+class SummaryNetwork(tf.keras.Model):
+    """Network to summarize the population of cells."""
+
+    def __init__(
+            self,
+            summary_dim,
+            num_conv_layers=2,
+            rnn_units=128,
+            bidirectional=True,
+            conv_settings=None,
+            use_GRU=True,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+
+        if conv_settings is None:
+            conv_settings = defaults.DEFAULT_SETTING_MULTI_CONV
+        self.conv_settings = conv_settings
+
+        self.conv = Sequential([MultiConv1D(conv_settings) for _ in range(num_conv_layers)])
+        self.num_conv_layers = num_conv_layers
+        self.rnn_units = rnn_units
+        self.use_GRU = use_GRU
+        self.bidirectional = bidirectional
+
+
+        if use_GRU:
+            self.rnn = Bidirectional(GRU(rnn_units)) if bidirectional else GRU(rnn_units)
+        else:
+            self.rnn = Bidirectional(LSTM(rnn_units)) if bidirectional else LSTM(rnn_units)
+
+        self.out_layer = Dense(summary_dim, activation="linear")
+        self.summary_dim = summary_dim
+
+    def call(self, x, **kwargs):
+        """Performs a forward pass through the network by first passing `x` through the rnn network.
+
+        Parameters
+        ----------
+        x : tf.Tensor
+            Input of shape (batch_size, n_groups, n_time_steps, n_features)
+
+        Returns
+        -------
+        out : tf.Tensor
+            Output of shape (batch_size, summary_dim)
+        """
+        # transform (batch_size, n_groups, n_time_steps, n_features) to (batch_size, n_time_steps, n_groups*n_features)
+        out = tf.transpose(x, [0, 2, 1, 3])  # transpose to (batch_size, n_time_steps, n_groups, n_features)
+        out = tf.reshape(out, [-1, out.shape[1], out.shape[2] * out.shape[3]])
+
+        # Apply the RNN
+        out = self.conv(out, **kwargs)
+        out = self.rnn(out, **kwargs)  # (batch_size, lstm_units)
+        # bidirectional LSTM returns 2*lstm_units
+
+        # apply dense layer
+        out = self.out_layer(out, **kwargs)  # (batch_size, summary_dim)
+        return out
+
+    def get_config(self):
+        """Return the config for serialization."""
+        config = super().get_config()
+        config.update({
+            'summary_dim': self.summary_dim,
+            'num_conv_layers': self.num_conv_layers,
+            'rnn_units': self.rnn_units,
+            'bidirectional': self.bidirectional,
+            'conv_settings': self.conv_settings,
+            'use_GRU': self.use_GRU,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        """Recreate the model from the config."""
+        return cls(**config)
+
 
 # define the network
 class GroupSummaryNetwork(tf.keras.Model):
@@ -607,6 +686,7 @@ def load_model(model_id: int,
     use_bidirectional = True
     summary_loss = 'MMD'
     use_manual_summary = False
+    summary_net = None  # will be defined later
     if model_id == 0:
         checkpoint_path = 'amortizer-cell-migration-attention-6'
         map_idx_sim = 52
@@ -632,16 +712,26 @@ def load_model(model_id: int,
         num_coupling_layers = 8
         use_manual_summary = True
         map_idx_sim = 86
+    elif model_id == 10:
+        checkpoint_path = 'amortizer-only-summary'
+        num_coupling_layers = 1
+        map_idx_sim = np.nan
+        summary_net = SummaryNetwork(
+            summary_dim=n_params,
+            rnn_units=32,
+            bidirectional=use_bidirectional
+        )
     else:
         raise ValueError('Checkpoint path not found')
 
     if on_cluster:
         checkpoint_path = "/home/jarruda_hpc/CellMigration/synth_data_params_bayesflow/" + checkpoint_path
 
-    summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
-                                      rnn_units=32,
-                                      use_attention=use_attention,
-                                      bidirectional=use_bidirectional)
+    if summary_net is None:
+        summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
+                                          rnn_units=32,
+                                          use_attention=use_attention,
+                                          bidirectional=use_bidirectional)
     inference_net = InvertibleNetwork(num_params=n_params,
                                       num_coupling_layers=num_coupling_layers,
                                       coupling_design='spline',
@@ -676,6 +766,15 @@ def load_model(model_id: int,
 
     # check if file exist
     if os.path.exists(checkpoint_path):
+        if model_id == 10:
+            # keras model not BayesFlow
+            trainer.amortizer.summary_net = keras.models.load_model(trainer.checkpoint_path,
+                                                                    custom_objects={'summary_net': summary_net})
+            # Re-enable logging
+            logging.disable(logging.NOTSET)
+
+            return trainer, map_idx_sim
+
         trainer.load_pretrained_network()
         history = trainer.loss_history.get_plottable()
 
@@ -707,7 +806,7 @@ print(job_array_id)
 on_cluster = True
 population_size = 1000
 run_old_sumstats = False
-load_synthetic_data = False
+load_synthetic_data = True
 
 parser = argparse.ArgumentParser(description='Parse necessary arguments')
 parser.add_argument('-pt', '--port', type=str, default="50004",
@@ -895,6 +994,7 @@ summary_valid_min = np.nanmin(direct_conditions_, axis=0)
 # use trained neural net as summary statistics
 def make_sumstat_dict_nn(
         data: Union[dict, np.ndarray],
+        model_id: int = 10,  # 5 for model trained with BayesFlow, 10 for model trained on posterior mean
 ) -> dict:
     if isinstance(data, dict):
         # get key
@@ -902,7 +1002,7 @@ def make_sumstat_dict_nn(
         data = data[key]
 
     trainer, map_idx_sim = load_model(
-        model_id=5,
+        model_id=model_id,
         x_mean=x_mean,
         x_std=x_std,
         p_mean=p_mean,
@@ -917,6 +1017,10 @@ def make_sumstat_dict_nn(
     out_dict = {
         'summary_net': trainer.amortizer.summary_net(config_input['summary_conditions']).numpy().flatten()
     }
+    if model_id == 10:
+        # renormalize the parameters
+        out_dict['summary_net'] = out_dict['summary_net'] * p_std + p_mean
+
     # if direct conditions are available, concatenate them
     if 'direct_conditions' in config_input.keys():
         out_dict['direct_conditions'] = config_input['direct_conditions'].flatten()
@@ -952,7 +1056,7 @@ abc_nn = pyabc.ABCSMC(model_nn, prior, # here we use now the Euclidean distance
                    population_size=population_size,
                    summary_statistics=make_sumstat_dict_nn,
                    sampler=redis_sampler)
-db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_nn_sumstats.db")
+db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_nn_sumstats_posterior_mean.db")
 print(db_path)
 history = abc_nn.new("sqlite:///" + db_path, obs_nn)
 

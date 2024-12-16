@@ -3,6 +3,7 @@ import os
 import pickle
 from functools import partial
 
+import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -356,6 +357,7 @@ class EnsembleTrainer:
         def __init__(self, amortizers):
             self.amortizers = amortizers
             self.n_amortizers = len(amortizers)
+            self.summary_loss = None
 
         def sample(self, forward_dict: list[dict], n_samples: int) -> np.ndarray:
             if self.n_amortizers != len(forward_dict):
@@ -380,7 +382,7 @@ class EnsembleTrainer:
 
             out_list = []
             for a_i, amortizer in enumerate(self.amortizers):
-                out = amortizer.summary_net(summary_conditions[a_i])
+                out = amortizer.summary_net(summary_conditions[a_i]['summary_conditions'])
                 out_list.append(out)
             return np.concatenate(out_list, axis=1)
 
@@ -484,6 +486,16 @@ def load_model(model_id: int,
             rnn_units=32,
             bidirectional=use_bidirectional
         )
+    elif model_id == 10:
+        print('load only summary model without checkpoint')
+        checkpoint_path = 'amortizer-only-summary'
+        num_coupling_layers = 1
+        map_idx_sim = np.nan
+        summary_net = SummaryNetwork(
+            summary_dim=n_params,
+            rnn_units=32,
+            bidirectional=use_bidirectional
+        )
     else:
         raise ValueError('Checkpoint path not found')
 
@@ -539,6 +551,15 @@ def load_model(model_id: int,
 
     # check if file exist
     if os.path.exists(checkpoint_path):
+        if model_id == 10:
+            # keras model not BayesFlow
+            trainer.amortizer.summary_net = keras.models.load_model(trainer.checkpoint_path,
+                                                                    custom_objects={'summary_net': summary_net})
+            # Re-enable logging
+            logging.disable(logging.NOTSET)
+
+            return trainer, map_idx_sim
+
         trainer.load_pretrained_network()
         history = trainer.loss_history.get_plottable()
 
