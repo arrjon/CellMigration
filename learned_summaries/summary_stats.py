@@ -85,7 +85,7 @@ def MSD_nan(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> n
     data = np.column_stack([x, y])
 
     # Calculate MSD using tidynamics, treating NaNs correctly
-    msd = []
+    msd = [0]
     for lag in range(1, len(data) if all_time_lags else 2):
         diffs = []
         for t in range(len(data) - lag):
@@ -101,10 +101,11 @@ def MSD_nan(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> n
     return np.array(msd)
 
 
-def MSD(data_dict: dict, x_name="x", y_name="y", all_time_lags: bool = True) -> Union[np.ndarray, float]:  # this should be used by abc because it is faster
+def MSD(data_dict: dict, x_name="x", y_name="y", all_time_lags: bool = True) -> Union[np.ndarray, float]:
     """Compute the mean square displacement of the cell for all possible time lags."""
     if np.isnan(data_dict[x_name]).any() or np.isnan(data_dict[y_name]).any():
         return MSD_nan(data_dict, x_name, y_name, all_time_lags)
+    # MSD_tidy is faster but cannot handle nans
     return MSD_tidy(data_dict, x_name, y_name, all_time_lags)
 
 
@@ -120,7 +121,9 @@ def angle_degree(data_dict: dict) -> np.ndarray:
     return np.array(list_angle_degrees)
 
 
-def mean_waiting_time(data_dict: dict, time_interval: float =30., threshold: float = np.pi/4) -> Union[np.ndarray, float]:
+def mean_waiting_time(
+        data_dict: dict, time_interval: float =30., threshold: float = np.pi/4
+) -> Union[np.ndarray, float]:
     """Compute the mean waiting time of the cell until it changes direction."""
     cell = np.stack([data_dict['x'], data_dict['y']], axis=1)
     time_steps = len(data_dict['x'])
@@ -151,7 +154,9 @@ def mean_waiting_time(data_dict: dict, time_interval: float =30., threshold: flo
 
 
 # my functions
-def cut_region(data_dict: dict, x_min: int, x_max: int, y_min: int, y_max: int, return_longest: bool) -> Optional[list[dict]]:
+def cut_region(
+        data_dict: dict, x_min: float, x_max: float, y_min: float, y_max: float, return_longest: bool
+) -> Optional[list[dict]]:
     """
     Cut the region of interest from the data.
     Truncate the data to the longest list if 'return_longest' is True.
@@ -290,7 +295,9 @@ def compute_MSD_lags(cell_population: np.ndarray) -> np.ndarray:
             continue
         else:
             msd_list.append(MSD(sim_dict, all_time_lags=True))
-    return np.stack(msd_list, axis=0)
+    msd = np.stack(msd_list, axis=0)
+    msd[msd < 0] = 0  # algorithm can give smaller 0 values due to numerical impression
+    return msd
 
 
 def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:

@@ -69,7 +69,7 @@ def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: 
         cell = cell.sort_values('POSITION_T', ascending=True)
         sequence_lengths_real.append(len(cell['y']))
         if cut_region_real_data:
-            cell = cut_region(cell, x_min=316.5, x_max=856.5, y_min=1145, y_max=1351, return_longest=True)
+            cell = cut_region(cell, x_min=316.5, x_max=856.5, y_min=1145., y_max=1351., return_longest=True)
             if cell is None:
                 continue
             cell = cell[0]
@@ -81,7 +81,7 @@ def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: 
 
     real_data = np.stack(real_data)
     real_data_full = real_data.copy()
-    real_data = real_data[:cells_in_population * (real_data_full.shape[0] // cells_in_population)]
+    real_data_50 = real_data[:cells_in_population * (real_data_full.shape[0] // cells_in_population)]
 
     # plot the real data
     if plot_data:
@@ -122,4 +122,4 @@ def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: 
         plt.imshow(tiff_im, origin='lower')
         plt.legend()
         plt.show()
-    return real_data, real_data_full
+    return real_data_50, real_data_full
