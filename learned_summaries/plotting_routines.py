@@ -67,7 +67,7 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
 
     for i in range(marginal_distances_list[0].shape[1]):
         for j, marginal_distances in enumerate(marginal_distances_list):
-            ax[i].hist(marginal_distances[:, i], bins=15, weights=weights, alpha=0.5, density=True,
+            ax[i].hist(marginal_distances[:, i], bins=15, weights=weights, alpha=0.8, density=True,
                        label=labels[j] if labels is not None and i == 0 else None,
                        color=colors[j] if colors is not None else None)
         ax[i].set_title(name_plots[i])
@@ -297,6 +297,7 @@ def sampling_parameter_cis(
     posterior_samples: np.ndarray,
     true_param: np.ndarray = None,
     param_names: list[str] = None,
+    prior_bounds: dict = None,
     alpha: list[int] = None,
     color_list: list[str] = None,
     step: float = 0.05,
@@ -360,13 +361,19 @@ def sampling_parameter_cis(
                     ax.plot(
                         [true_param[npar], true_param[npar]],
                         [npar - _step, npar + _step],
-                        linestyle="--",
+                        linestyle="-",
                         color="black",
                         label="True Parameter",
                     )
 
             # increment height of boxes
             _step += step
+
+    if prior_bounds is not None:
+        for i, bounds in enumerate(prior_bounds):
+            ax.vlines(x=bounds[0], ymin=0 + (i * 4), ymax=3 + (i * 4), color='gray', linestyle='--', linewidth=0.8)
+            ax.vlines(x=bounds[1], ymin=0 + (i * 4), ymax=3 + (i * 4), color='gray', linestyle='--', linewidth=0.8,
+                      label='Prior Boundary' if i == 0 else None)
 
     ax.set_yticks(range(n_pars))
     if param_names is not None:
@@ -386,9 +393,16 @@ def sampling_parameter_cis(
         labels_new = labels[:len(alpha_sorted)]
         for i in range(len(alpha_sorted)):
             handles_new.append(Patch(color='grey', alpha=1 / (len(alpha_sorted) - i), label=labels_new[i]))
+
+        show_last = 0
         if true_param is not None or show_median:
-            handles_new.append(handles[-1])
-            labels_new.append(labels[-1])
+            show_last += 1
+            handles_new.append(handles[-show_last])
+            labels_new.append(labels[-show_last])
+        if prior_bounds is not None:
+            show_last += 1
+            handles_new.append(handles[-show_last])
+            labels_new.append(labels[-show_last])
         ax.legend(handles=handles_new, labels=labels_new, bbox_to_anchor=legend_bbox_to_anchor)
     else:
         ax.legend(by_label.values(), by_label.keys(), bbox_to_anchor=legend_bbox_to_anchor)
@@ -402,10 +416,11 @@ def plot_posterior_2d(
     prior_draws=None,
     param_names=None,
     true_params=None,
-    height=3,
-    label_fontsize=14,
-    legend_fontsize=16,
-    tick_fontsize=12,
+    reference_params=None,
+    height=2,
+    label_fontsize=16,
+    legend_fontsize=18,
+    tick_fontsize=14,
     bins="auto",
     post_color="#8f2727",
     prior_color="gray",
@@ -425,6 +440,7 @@ def plot_posterior_2d(
     param_names       : list or None, optional, default: None
         The parameter names for nice plot titles. Inferred if None
     true_params: np.ndarray of shape (n_params,) or None, optional, default: None
+    reference_params: np.ndarray of shape (n_params,) or None, optional, default: None
     height            : float, optional, default: 3
         The height of the pairplot
     label_fontsize    : int, optional, default: 14
@@ -502,11 +518,20 @@ def plot_posterior_2d(
     if true_params is not None:
         def plot_true_params(x, **kwargs):
             param = x.iloc[0]  # Get the single true value for the diagonal
-            plt.axvline(param, color="black", linestyle="--")  # Add vertical line
+            plt.axvline(param, color="red", linestyle="--")  # Add vertical line
 
         # only plot on the diagonal a vertical line for the true parameter
         g.data = pd.DataFrame(true_params[np.newaxis], columns=param_names)
         g.map_diag(plot_true_params)
+
+    if reference_params is not None:
+        def plot_ref_params(x, **kwargs):
+            param = x.iloc[0]  # Get the single true value for the diagonal
+            plt.axvline(param, color="black", linestyle="--")  # Add vertical line
+
+        # only plot on the diagonal a vertical line for the true parameter
+        g.data = pd.DataFrame(reference_params[np.newaxis], columns=param_names)
+        g.map_diag(plot_ref_params)
 
     # Add legend, if prior also given
     if prior_draws is not None or prior is not None:
@@ -516,9 +541,12 @@ def plot_posterior_2d(
         ]
         labels = ["Posterior", "Prior"]
         if true_params is not None:
-            handles.append(Line2D(xdata=[], ydata=[], color="black", linestyle="--"))
+            handles.append(Line2D(xdata=[], ydata=[], color="red", linestyle="--"))
             labels.append("True Parameter")
-        g.fig.legend(handles, labels, fontsize=legend_fontsize, loc="center right")
+        if reference_params is not None:
+            handles.append(Line2D(xdata=[], ydata=[], color="black", linestyle="--"))
+            labels.append("Summary Network")
+        g.fig.legend(handles, labels, fontsize=legend_fontsize, loc="upper right")
 
     # Remove upper axis
     for i, j in zip(*np.triu_indices_from(g.axes, 1)):
