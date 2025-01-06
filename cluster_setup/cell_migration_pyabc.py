@@ -28,10 +28,8 @@ from tensorflow.keras.models import Sequential
 
 
 # defining the summary statistics functions
-def turning_angle(data_dict):
+def _turning_angle(x: np.ndarray, y: np.ndarray) -> np.ndarray:
     """Compute the angle between two consecutive points."""
-    x = data_dict['x']
-    y = data_dict['y']
     vx = np.diff(x)
     vy = np.diff(y)
     theta = np.arctan2(vy, vx)
@@ -40,7 +38,44 @@ def turning_angle(data_dict):
     return theta
 
 
-def velocity(data_dict):
+def turning_angle(data_dict: dict) -> np.ndarray:
+    """Compute the angle between two consecutive points, skipping segments with NaN."""
+    x = np.array(data_dict['x'])
+    y = np.array(data_dict['y'])
+
+    # Find valid points (both x and y are not NaN)
+    valid_mask = ~np.isnan(x) & ~np.isnan(y)
+
+    # Initialize the list of turning angles
+    turning_angles = []
+
+    # Iterate through the valid mask to find continuous valid segments
+    current_segment = []
+    for i in range(len(valid_mask)):
+        if valid_mask[i]:
+            current_segment.append(i)
+        else:
+            # If we hit a NaN, process the current segment and reset
+            if len(current_segment) > 1:
+                segment_x = x[current_segment]
+                segment_y = y[current_segment]
+                # Compute turning angles for this segment
+                ta = _turning_angle(segment_x, segment_y)
+                turning_angles.extend(ta)
+            current_segment = []
+
+    # Process the last segment if it exists
+    if len(current_segment) > 1:
+        segment_x = x[current_segment]
+        segment_y = y[current_segment]
+        ta = _turning_angle(segment_x, segment_y)
+        turning_angles.extend(ta)
+
+    return np.array(turning_angles)
+
+
+
+def velocity(data_dict: dict) -> np.ndarray:
     """Compute the velocity of the cell."""
     x = data_dict['x']
     y = data_dict['y']
@@ -50,14 +85,52 @@ def velocity(data_dict):
     return v
 
 
-def MSD(data_dict, x_name="x", y_name="y"):
-    """Compute the mean square displacement of the cell."""
+def MSD_tidy(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> Union[np.ndarray, float]:  # this should be used as it is faster
+    """Compute the mean square displacement of the cell for all possible time lags.
+    If nan values are present, return nan."""
     msd = tidynamics.msd(
         np.column_stack([data_dict[x_name], data_dict[y_name]]))
+    if not all_time_lags:
+        return msd[1]
     return msd
 
 
-def angle_degree(data_dict):
+
+def MSD_nan(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> np.ndarray:
+    """Compute the mean square displacement of the cell, handling NaN values."""
+    # Extract data
+    x = data_dict[x_name]
+    y = data_dict[y_name]
+
+    # Combine x and y, maintaining the original length with NaNs
+    data = np.column_stack([x, y])
+
+    # Calculate MSD using tidynamics, treating NaNs correctly
+    msd = [0]
+    for lag in range(1, len(data) if all_time_lags else 2):
+        diffs = []
+        for t in range(len(data) - lag):
+            # Ensure both points at t and t+lag are valid
+            if not (np.isnan(x[t]) or np.isnan(x[t + lag]) or np.isnan(y[t]) or np.isnan(y[t + lag])):
+                dx = data[t + lag, 0] - data[t, 0]
+                dy = data[t + lag, 1] - data[t, 1]
+                diffs.append(dx ** 2 + dy ** 2)
+        if diffs:
+            msd.append(np.mean(diffs))
+        else:
+            msd.append(np.nan)  # If no valid pairs exist for this lag
+    return np.array(msd)
+
+
+def MSD(data_dict: dict, x_name="x", y_name="y", all_time_lags: bool = True) -> Union[np.ndarray, float]:
+    """Compute the mean square displacement of the cell for all possible time lags."""
+    if np.isnan(data_dict[x_name]).any() or np.isnan(data_dict[y_name]).any():
+        return MSD_nan(data_dict, x_name, y_name, all_time_lags)
+    # MSD_tidy is faster but cannot handle nans
+    return MSD_tidy(data_dict, x_name, y_name, all_time_lags)
+
+
+def angle_degree(data_dict: dict) -> np.ndarray:
     """Compute the absolute angle between two consecutive points in degrees with respect to the x-axis."""
     x = data_dict['x']
     y = data_dict['y']
@@ -66,10 +139,12 @@ def angle_degree(data_dict):
     list_angle_degrees = []
     for x, y in zip(vx, vy):
         list_angle_degrees.append(math.degrees(math.atan2(x, y)))
-    return list_angle_degrees
+    return np.array(list_angle_degrees)
 
 
-def mean_waiting_time(data_dict, time_interval=30., threshold=np.pi/4):
+def mean_waiting_time(
+        data_dict: dict, time_interval: float =30., threshold: float = np.pi/4
+) -> Union[np.ndarray, float]:
     """Compute the mean waiting time of the cell until it changes direction."""
     cell = np.stack([data_dict['x'], data_dict['y']], axis=1)
     time_steps = len(data_dict['x'])
@@ -100,7 +175,9 @@ def mean_waiting_time(data_dict, time_interval=30., threshold=np.pi/4):
 
 
 # my functions
-def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optional[list[dict]]:
+def cut_region(
+        data_dict: dict, x_min: float, x_max: float, y_min: float, y_max: float, return_longest: bool
+) -> Optional[list[dict]]:
     """
     Cut the region of interest from the data.
     Truncate the data to the longest list if 'return_longest' is True.
@@ -145,28 +222,32 @@ def cut_region(data_dict, x_min, x_max, y_min, y_max, return_longest) -> Optiona
     return obs_list
 
 
-def compute_mean(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
+def compute_mean(x: Union[float, int, list, np.ndarray]) -> Union[float, np.floating]:
     """
     Compute the mean if x is a non-empty list.
     Return x if it's a float/int.
     Return np.nan if it's an empty list or unrecognized type.
     """
     if isinstance(x, (list, np.ndarray)):
-        return np.mean(x) if len(x) > 0 else np.nan
+        if len(x) == 0:
+            return np.nan
+        return np.nanmean(x)
     elif isinstance(x, (int, float)):
         return x
     else:
         return np.nan
 
 
-def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, int]:
+def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, np.floating]:
     """
     Compute the variance if x is a non-empty list.
     Return x if it's a float/int.
     Return np.nan if it's an empty list or unrecognized type.
     """
     if isinstance(x, (list, np.ndarray)):
-        return np.var(x) if len(x) > 0 else np.nan
+        if len(x) == 0:
+            return np.nan
+        return np.nanvar(x)
     elif isinstance(x, (int, float)):
         return 0.0
     else:
@@ -218,6 +299,26 @@ def compute_summary_stats(cell_population: np.ndarray) -> (list, list, list, lis
             wt_list.append(mean_waiting_time(sim_dict))
 
     return msd_list, ta_list, v_list, ad_list, wt_list
+
+
+def compute_MSD_lags(cell_population: np.ndarray) -> np.ndarray:
+    """
+    Compute the mean square displacement of the cell population for all possible time lags.
+
+    :param cell_population: 3D array of cell populations
+    :return: array of mean square displacements
+    """
+    msd_list = []
+    cell_count = cell_population.shape[0]
+    for i in range(0, cell_count):
+        sim_dict = {'x': cell_population[i, :, 0], 'y': cell_population[i, :, 1]}
+        if all(np.isnan(sim_dict['x'])):
+            continue
+        else:
+            msd_list.append(MSD(sim_dict, all_time_lags=True))
+    msd = np.stack(msd_list, axis=0)
+    msd[msd < 0] = 0  # algorithm can give smaller 0 values due to numerical impression
+    return msd
 
 
 def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
@@ -805,7 +906,7 @@ n_procs = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
 print(job_array_id)
 on_cluster = True
 population_size = 1000
-run_old_sumstats = False
+run_old_sumstats = True
 load_synthetic_data = True
 
 parser = argparse.ArgumentParser(description='Parse necessary arguments')
@@ -857,12 +958,12 @@ def make_sumstat_dict(data: Union[dict, np.ndarray]) -> dict:
 
 
 def prepare_sumstats(output_morpheus_model) -> dict:
-    sim_coordinates = reduce_to_coordinates(output_morpheus_model, 
-                          minimal_length=min_sequence_length, 
-                          maximal_length=max_sequence_length,
-                          only_longest_traj_per_cell=only_longest_traj_per_cell
-                          )
-    
+    sim_coordinates = reduce_to_coordinates(output_morpheus_model,
+                                            minimal_length=min_sequence_length,
+                                            maximal_length=max_sequence_length,
+                                            only_longest_traj_per_cell=only_longest_traj_per_cell
+                                            )
+
     # we now do exactly the same as in the BayesFlow workflow, but here we get only one sample at a time
     data_transformed = np.ones((1, cells_in_population, max_sequence_length, 2)) * np.nan
     # each cell is of different length, each with x and y coordinates, make a tensor out of it
@@ -873,7 +974,7 @@ def prepare_sumstats(output_morpheus_model) -> dict:
             # pre-pad the data with zeros, but first write zeros as nans to compute the mean and std
             data_transformed[0, c_id, -len(cell_sim['x']):, 0] = cell_sim['x']
             data_transformed[0, c_id, -len(cell_sim['y']):, 1] = cell_sim['y']
-    
+
     return {'sim': data_transformed}
 
 
@@ -936,14 +1037,29 @@ else:
     np.array([real_data[start:start + cells_in_population] for start in range(0, len(real_data), cells_in_population)])[
         0][np.newaxis]
 #%%
-def obj_func_wass(sim: dict, obs: dict):
-    total = 0
-    for key in sim:
-        x, y = np.array(sim[key]), np.array(obs[key])
-        if x.size == 0:
-            return np.inf
-        total += stats.wasserstein_distance(x, y)
-    return total
+def obj_func_wass_helper(sim: dict, obs: dict, key: str) -> float:
+    x, y = np.array(sim[key]), np.array(obs[key])
+    if x.size == 0 or y.size == 0:
+        return np.inf
+    return stats.wasserstein_distance(x, y)
+
+distances = {
+    'ad': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='ad')),
+    'msd': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='msd')),
+    'ta': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='ta')),
+    'vel': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='vel')),
+    'wt': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='wt'))
+}
+adaptive_weights = {
+    d: 1. / max(np.max(make_sumstat_dict(test_sim)[d]), 1e-4) for d in distances.keys()
+}
+
+# adaptive distance
+adaptive_wasserstein_distance = pyabc.distance.AdaptiveAggregatedDistance(
+    distances=list(distances.values()),
+    initial_weights=list(adaptive_weights.values()),
+    log_file=os.path.join(gp, f"adaptive_distance_log.txt")
+)
 #%%
 if run_old_sumstats:
     redis_sampler = RedisEvalParallelSampler(host=args.ip, port=args.port,
@@ -951,12 +1067,12 @@ if run_old_sumstats:
                                              look_ahead=False)
 
     abc = pyabc.ABCSMC(model, prior,
-                       distance_function=obj_func_wass,
+                       distance_function=adaptive_wasserstein_distance,
                        summary_statistics=make_sumstat_dict,
                        population_size=population_size,
                        sampler=redis_sampler)
 
-    db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_old_sumstats.db")
+    db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_wasserstein_sumstats.db")
     history = abc.new("sqlite:///" + db_path, make_sumstat_dict(test_sim))
 
     #start the abc fitting

@@ -57,7 +57,7 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
         # compute the distance for each hand-crafted summary statistics
         marginal_distances = np.zeros((len(sumstats), len(test_sim_dict.keys())))
         for i, st in enumerate(sumstats):
-            marginal_distances[i] = obj_func_wass(test_sim_dict, st, return_marginal=True, normalize=True)
+            marginal_distances[i] = obj_func_wass(test_sim_dict, st, return_marginal=True)
 
         marginal_distances_list.append(marginal_distances)
 
@@ -71,7 +71,7 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
                        label=labels[j] if labels is not None and i == 0 else None,
                        color=colors[j] if colors is not None else None)
         ax[i].set_title(name_plots[i])
-        ax[i].set_xlabel('Normalized\nWasserstein Distance')
+        ax[i].set_xlabel('Weighted\nWasserstein Distance')
     ax[0].set_ylabel('Density')
     if labels is not None:
         fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15),
@@ -145,16 +145,7 @@ def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = 
     if path is not None:
         plt.savefig(f'{path}.png')
     plt.show()
-
-    # Wasserstein distance
-    wasserstein_distance = stats.wasserstein_distance(ad_mean_synth_sim[0], ad_mean_synth[0])
-    wasserstein_distance += stats.wasserstein_distance(MSD_mean_synth_sim[0], MSD_mean_synth[0])
-    wasserstein_distance += stats.wasserstein_distance(TA_mean_synth_sim[0], TA_mean_synth[0])
-    wasserstein_distance += stats.wasserstein_distance(VEL_mean_synth_sim[0], VEL_mean_synth[0])
-    wasserstein_distance += stats.wasserstein_distance(WT_mean_synth_sim[0], WT_mean_synth[0])
-    print(f"Wasserstein distance: {wasserstein_distance}")
-
-    return wasserstein_distance
+    return
 
 
 def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
