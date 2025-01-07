@@ -82,6 +82,61 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
     return
 
 
+def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, sumstats_list: list[list],
+                                labels: list[str] = None, colors: list[str] = None,
+                                sharey: bool = False, sharex: bool = False,
+                                path: str = None):
+    """
+    Plot the median and standard deviation of the Wasserstein distance between the summary statistics of the
+    test simulation and the simulations.
+    """
+    if labels is not None:
+        if len(labels) != len(sumstats_list):
+            raise ValueError("The number of labels should be equal to the number of summary statistics lists")
+
+    marginal_distances_list = []
+    for sumstats in sumstats_list:
+        # compute the distance for each hand-crafted summary statistics
+        marginal_distances = np.zeros((len(sumstats), len(test_sim_dict.keys())))
+        for i, st in enumerate(sumstats):
+            marginal_distances[i] = obj_func_wass(test_sim_dict, st, return_marginal=True)
+
+        marginal_distances_list.append(marginal_distances)
+
+    fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=sharey, sharex=sharex,
+                           figsize=(10, 3), tight_layout=True)
+    name_plots = ['Angle Degree\n', 'Mean Squared\nDisplacement', 'Turning Angle\n', 'Velocity\n', 'Waiting Time\n']
+
+    for i in range(marginal_distances_list[0].shape[1]):
+        for j, marginal_distances in enumerate(marginal_distances_list):
+            # Compute median and standard deviation
+            median = np.median(marginal_distances[:, i])
+            std_dev = np.std(marginal_distances[:, i])
+
+            # Plot median and standard deviation
+            ax[i].bar(j, median, yerr=std_dev, align='center', alpha=0.8,
+                      label=labels[j] if labels is not None and i == 0 else None,
+                      color=colors[j] if colors is not None else None, capsize=5)
+
+        ax[i].set_xlabel(name_plots[i])
+
+    ax[0].set_ylabel('Weighted\nWasserstein Distance')
+
+    if labels is not None:
+        median_patch = Patch(color='grey', label='Median')
+        std_patch  = plt.plot([], [], color='black', label='Std')[0]
+
+        fig.legend(handles=[median_patch, std_patch] + ax[0].get_legend_handles_labels()[0],
+            loc='lower center', bbox_to_anchor=(0.5, -0.15),
+                   ncol=len(labels) // 2 + 1 if len(labels) > 3 else len(labels))
+    if path is not None:
+        plt.savefig(path, bbox_inches='tight')
+
+    plt.show()
+    return
+
+
+
 def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = None, compare_n: int = 5,
                                seed: int = 42):
     """

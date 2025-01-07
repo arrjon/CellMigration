@@ -1072,7 +1072,7 @@ if run_old_sumstats:
                        population_size=population_size,
                        sampler=redis_sampler)
 
-    db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_wasserstein_sumstats.db")
+    db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_wasserstein_sumstats_adaptive.db")
     history = abc.new("sqlite:///" + db_path, make_sumstat_dict(test_sim))
 
     #start the abc fitting
