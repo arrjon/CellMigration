@@ -269,13 +269,7 @@ for test_id in [0, 1, 2]:
 
     # %%
     # get posterior samples and simulate
-    if not os.path.exists(trainer.checkpoint_path + f'/posterior_sim_{test_id}.npy'):
-        # simulate the data
-        posterior_sim = bayes_simulator(test_posterior_samples)['sim_data']
-        np.save(trainer.checkpoint_path + f'/posterior_sim_{test_id}.npy', posterior_sim)
-    else:
-        posterior_sim = np.load(trainer.checkpoint_path+f'/posterior_sim_{test_id}.npy')
-        map_sim = posterior_sim[map_idx_sim]
+    posterior_sim = bayes_simulator(test_posterior_samples)['sim_data']
 
     # plot the summary statistics
     wasserstein_distance = plot_compare_summary_stats(test_sim, posterior_sim, path=f'{trainer.checkpoint_path}/{test_id}-Summary Stats')

@@ -414,7 +414,7 @@ def sampling_parameter_cis(
         for i, bounds in enumerate(prior_bounds):
             ax.vlines(x=bounds[0], ymin=0 + (i * 4), ymax=3 + (i * 4), color='gray', linestyle='--', linewidth=0.8)
             ax.vlines(x=bounds[1], ymin=0 + (i * 4), ymax=3 + (i * 4), color='gray', linestyle='--', linewidth=0.8,
-                      label='Prior Boundary' if i == 0 else None)
+                      label='Uniform Prior' if i == 0 else None)
 
     ax.set_yticks(range(n_pars))
     if param_names is not None:
@@ -610,3 +610,135 @@ def plot_posterior_2d(
 
     g.tight_layout()
     return g.fig
+
+
+def plot_posterior_1d(
+    posterior_draws,
+    prior=None,
+    prior_draws=None,
+    param_names=None,
+    true_params=None,
+    reference_params=None,
+    height=2,
+    label_fontsize=16,
+    legend_fontsize=18,
+    tick_fontsize=14,
+    bins="auto",
+    post_color="#8f2727",
+    prior_color="gray",
+    post_alpha=0.9,
+    prior_alpha=0.7,
+):
+    """
+    Generates horizontal 1D marginal density and histogram plots for each parameter from posterior draws,
+    with optional prior, true, and reference parameters, and places the legend to the right.
+
+    Parameters
+    ----------
+    posterior_draws : np.ndarray, shape (n_post_draws, n_params)
+        Posterior draws for a single dataset.
+    prior : callable or None
+        Prior object to generate draws if prior_draws is not provided.
+    prior_draws : np.ndarray or None
+        Array of prior draws, shape (n_prior_draws, n_params).
+    param_names : list of str or None
+        Names for parameters; inferred if None.
+    true_params : array-like or None
+        True parameter values, length n_params.
+    reference_params : array-like or None
+        Reference parameter values, length n_params.
+    height : float
+        Height of each subplot in inches.
+    label_fontsize, legend_fontsize, tick_fontsize : int
+        Font sizes for labels, legend, and ticks.
+    bins : int or 'auto' or None
+        Number of bins for histograms; passed to seaborn.
+    post_color, prior_color : str
+        Colors for posterior and prior plots.
+    post_alpha, prior_alpha : float
+        Opacity for posterior and prior plots.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure containing the 1D horizontal plots.
+    """
+    # Check input shape
+    assert posterior_draws.ndim == 2, "`posterior_draws` must be 2D array"
+    n_draws, n_params = posterior_draws.shape
+
+    # Generate prior_draws if needed
+    if prior is not None and prior_draws is None:
+        draws = prior(n_draws)
+        prior_draws = draws.get("prior_draws", draws) if isinstance(draws, dict) else draws
+
+    # Infer parameter names
+    if param_names is None:
+        if hasattr(prior, "param_names") and prior.param_names is not None:
+            param_names = prior.param_names
+        else:
+            param_names = [f"$\theta_{{{i}}}$" for i in range(1, n_params + 1)]
+
+    # Create DataFrames
+    post_df = pd.DataFrame(posterior_draws, columns=param_names)
+    prior_df = pd.DataFrame(prior_draws, columns=param_names) if prior_draws is not None else None
+
+    # Setup figure and axes: horizontal layout
+    fig, axes = plt.subplots(1, n_params,
+                             figsize=(height * n_params, height),
+                             squeeze=False)
+    axes = axes.flatten()
+
+    # Plot each parameter
+    for i, name in enumerate(param_names):
+        ax = axes[i]
+        # Posterior
+        sns.histplot(
+            post_df[name], ax=ax,
+            bins=bins, kde=True,
+            color=post_color, alpha=post_alpha, fill=True
+        )
+        # Prior if available
+        if prior_df is not None:
+            sns.histplot(
+                prior_df[name], ax=ax,
+                bins=bins, kde=True,
+                color=prior_color, alpha=prior_alpha, fill=True,
+                zorder=-1
+            )
+        # True parameter line
+        if true_params is not None:
+            ax.axvline(true_params[i], color="red", linestyle="--")
+        # Reference parameter line
+        if reference_params is not None:
+            ax.axvline(reference_params[i], color="black", linestyle="--")
+        # Labels and ticks
+        ax.set_xlabel(name, fontsize=label_fontsize)
+        ax.set_yticklabels([])
+        ax.tick_params(axis="x", labelsize=tick_fontsize)
+        ax.grid(alpha=0.5)
+        if i == 0:
+            ax.set_ylabel("Density", fontsize=label_fontsize)
+        else:
+            ax.set_ylabel("")
+
+    # Legend to the right
+    if prior_draws is not None or prior is not None:
+        handles = [
+            Line2D([], [], color=post_color, lw=3, alpha=post_alpha),
+            Line2D([], [], color=prior_color, lw=3, alpha=prior_alpha)
+        ]
+        labels = ["Posterior", "Prior"]
+        if true_params is not None:
+            handles.append(Line2D([], [], color="red", linestyle="--"))
+            labels.append("True Parameter")
+        if reference_params is not None:
+            handles.append(Line2D([], [], color="black", linestyle="--"))
+            labels.append("Mean-NN Prediction")
+        fig.legend(handles, labels,
+                   fontsize=legend_fontsize,
+                   loc='center right',
+                   bbox_to_anchor=(1.35, 0.5))
+
+    plt.tight_layout(rect=(0, 0, 0.95, 1))
+    return fig

@@ -905,9 +905,10 @@ else:
     real_data, real_data_full = load_real_data(data_id=1,
                                                max_sequence_length=max_sequence_length,
                                                cells_in_population=cells_in_population)
-    test_sim = \
-    np.array([real_data[start:start + cells_in_population] for start in range(0, len(real_data), cells_in_population)])[
-        0][np.newaxis]
+    test_sim = real_data_full[np.newaxis]
+    #test_sim = \
+    #np.array([real_data[start:start + cells_in_population] for start in range(0, len(real_data), cells_in_population)])[
+    #    0][np.newaxis]
 #%%
 def obj_func_wass_helper(sim: dict, obs: dict, key: str) -> float:
     x, y = np.array(sim[key]), np.array(obs[key])
@@ -968,7 +969,7 @@ print('Mean and std of parameters:', p_mean, p_std)
 # use trained neural net as summary statistics
 def make_sumstat_dict_nn(data: Union[dict, np.ndarray], use_npe_summaries: bool = True) -> dict:
     if use_npe_summaries:
-        model_id = 5  # todo: best network for NPE summaries
+        model_id = 2
     else:
         model_id = 10
     if isinstance(data, dict):
