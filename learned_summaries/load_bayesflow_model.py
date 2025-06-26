@@ -15,9 +15,6 @@ from bayesflow.trainers import Trainer
 from tensorflow.keras.layers import Dense, GRU, LSTM, Bidirectional
 from tensorflow.keras.models import Sequential
 
-from load_data import load_real_data
-from summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats
-
 on_cluster = False
 
 
@@ -39,28 +36,11 @@ def configurator(
         forward_dict: dict,
         x_mean: np.ndarray, x_std: np.ndarray,
         p_mean: np.ndarray, p_std: np.ndarray,
-        summary_valid_min: np.ndarray = None, summary_valid_max: np.ndarray = None,
-        manual_summary: bool = False,
-        include_real: str = None
 ) -> dict:
     out_dict = {}
 
     # Extract data
     x = forward_dict["sim_data"]
-
-    # compute manual summary statistics
-    if manual_summary:
-        summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in x]
-        # compute the mean of the summary statistics
-        (_, ad_averg, _, MSD_averg, _,
-         TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list, remove_nan=False)
-        direct_conditions = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
-        # normalize statistics
-        direct_conditions = (direct_conditions - summary_valid_min) / (summary_valid_max - summary_valid_min)
-        # replace nan or inf with -1
-        direct_conditions[np.isinf(direct_conditions)] = -1
-        direct_conditions[np.isnan(direct_conditions)] = -1
-        out_dict['direct_conditions'] = direct_conditions.astype(np.float32)
 
     # Normalize data
     x = (x - x_mean) / x_std
@@ -75,67 +55,6 @@ def configurator(
     # Normalize data
     x[np.isnan(x)] = 0  # replace nan with 0, pre-padding (since we have nans in the data at the end)
     out_dict['summary_conditions'] = x.astype(np.float32)
-
-    if include_real is not None:
-        assert manual_summary == True
-        max_sequence_length = 120
-        cells_in_population = 50
-        p = 1  # Lp-distance
-
-        real_data, _ = load_real_data(
-            data_id=1,
-            max_sequence_length=max_sequence_length,
-            cells_in_population=cells_in_population
-        )
-        real_data = np.array(
-            [real_data[start:start + cells_in_population]
-             for start in range(0, len(real_data), cells_in_population)])[0][np.newaxis]
-
-        trainer, _ = load_model(
-            model_id=5,
-            x_mean=x_mean,
-            x_std=x_std,
-            p_mean=p_mean,
-            p_std=p_std,
-            summary_valid_max=summary_valid_max,
-            summary_valid_min=summary_valid_min,
-        )
-
-        # configures the input for the network
-        config_input = trainer.configurator({"sim_data": real_data})
-        # get the summary statistics
-        real_dict = {
-            'summary_net': trainer.amortizer.summary_net(config_input['summary_conditions']).numpy(),
-            'direct_conditions': config_input['direct_conditions']
-        }
-
-        # get the summary statistics of the batch
-        batch_dict = {
-            'summary_net': trainer.amortizer.summary_net(out_dict['summary_conditions']).numpy(),
-            'direct_conditions': out_dict['direct_conditions']
-        }
-        real = np.concatenate((real_dict['summary_net'], real_dict['direct_conditions']), axis=-1)
-        batch = np.concatenate((batch_dict['summary_net'], batch_dict['direct_conditions']), axis=-1)
-
-        if include_real == 'concat':
-            # concatenate difference to real data to the summary conditions
-            out_direct = (np.abs(batch - real)**p).sum(axis=-1) ** (1/p)
-            out_dict['direct_conditions'] = np.concatenate((
-                batch_dict['summary_net'],  # no summary is trained, so we use the precomputed network
-                out_dict['direct_conditions'],  # direct conditions as they are
-                out_direct[:, np.newaxis]  # difference to real data (same norm as in pyABC)
-            ), axis=-1).astype(np.float32)
-        elif include_real == 'compare':
-            # summary statistics is only relative to real data
-            out_direct = (np.abs(batch - real)**p)
-            out_dict['direct_conditions'] = out_direct.astype(np.float32)  # difference to real data (same norm as in pyABC, but not summed)
-        else:
-            raise ValueError('Include real type not recognized')
-        del trainer
-        del real_data
-
-        # drop summary conditions
-        out_dict.pop('summary_conditions')
 
     # Extract params
     if 'parameters' in forward_dict.keys():
@@ -414,7 +333,6 @@ class EnsembleTrainer:
 def load_model(model_id: int,
                x_mean: np.ndarray, x_std: np.ndarray,
                p_mean: np.ndarray, p_std: np.ndarray,
-               summary_valid_max: np.ndarray = None, summary_valid_min: np.ndarray = None,
                generative_model=None):
     # Set the logger to the desired level
     tf.get_logger().setLevel('ERROR')  # This will suppress warnings and info logs from TensorFlow
@@ -425,67 +343,26 @@ def load_model(model_id: int,
     use_attention = True
     use_bidirectional = True
     summary_loss = 'MMD'
-    use_manual_summary = False
-    include_real = None
     summary_net = None  # will be defined later
     if model_id == 0:
         checkpoint_path = 'amortizer-cell-migration-attention-6'
         map_idx_sim = 52
     elif model_id == 1:
-        checkpoint_path = 'amortizer-cell-migration-attention-6-manual'
-        use_manual_summary = True
-        map_idx_sim = 6
-    elif model_id == 2:
         checkpoint_path = 'amortizer-cell-migration-attention-7'
         num_coupling_layers = 7
         map_idx_sim = 52
-    elif model_id == 3:
-        checkpoint_path = 'amortizer-cell-migration-attention-7-manual'
-        num_coupling_layers = 7
-        use_manual_summary = True
-        map_idx_sim = 28
-    elif model_id == 4:
+    elif model_id == 2:
         checkpoint_path = 'amortizer-cell-migration-attention-8'
         num_coupling_layers = 8
         map_idx_sim = 69
-    elif model_id == 5:
-        checkpoint_path = 'amortizer-cell-migration-attention-8-manual'
-        num_coupling_layers = 8
-        use_manual_summary = True
-        map_idx_sim = 86
-    elif model_id == 6:
-        checkpoint_path = 'amortizer-cell-migration-attention-8-manual-include-real'
-        num_coupling_layers = 8
-        use_manual_summary = True
-        map_idx_sim = np.nan
-        include_real = 'concat'
-        summary_loss = None
-    elif model_id == 7:
-        checkpoint_path = 'amortizer-cell-migration-attention-8-manual-compare-real'
-        num_coupling_layers = 8
-        use_manual_summary = True
-        map_idx_sim = np.nan
-        include_real = 'compare'
-        summary_loss = None
-    elif model_id == 8:
+    elif model_id == 3:
         print('Loading ensemble model')
-        model_ids = [5, 4, 3, 2, 1, 0]
+        model_ids = [2, 1, 0]
         trainers = []
         for m_id in model_ids:
-            trainer, _ = load_model(m_id, x_mean, x_std, p_mean, p_std,
-                                 summary_valid_max, summary_valid_min, generative_model)
+            trainer, _ = load_model(m_id, x_mean, x_std, p_mean, p_std, generative_model)
             trainers.append(trainer)
         return EnsembleTrainer(trainers), np.nan  # no map_idx_sim for ensemble model
-    elif model_id == 9:
-        checkpoint_path = 'amortizer-cell-migration-GRU-8-manual'
-        num_coupling_layers = 8
-        use_manual_summary = True
-        map_idx_sim = np.nan
-        summary_net = SummaryNetwork(
-            summary_dim=n_params * 2,
-            rnn_units=32,
-            bidirectional=use_bidirectional
-        )
     elif model_id == 10:
         print('load only summary model without checkpoint')
         checkpoint_path = 'amortizer-only-summary'
@@ -502,7 +379,7 @@ def load_model(model_id: int,
     if on_cluster:
         checkpoint_path = "/home/jarruda_hpc/CellMigration/synth_data_params_bayesflow/" + checkpoint_path
 
-    if include_real is None and summary_net is None:
+    if summary_net is None:
         summary_net = GroupSummaryNetwork(
             summary_dim=n_params * 2,
             rnn_units=32,
@@ -540,9 +417,7 @@ def load_model(model_id: int,
         amortizer=amortizer,
         configurator=partial(configurator,
                              x_mean=x_mean, x_std=x_std,
-                             p_mean=p_mean, p_std=p_std,
-                             summary_valid_max=summary_valid_max, summary_valid_min=summary_valid_min,
-                             manual_summary=use_manual_summary, include_real=include_real),
+                             p_mean=p_mean, p_std=p_std),
         generative_model=generative_model,
         checkpoint_path=checkpoint_path,
         skip_checks=True,  # simulation takes too much time

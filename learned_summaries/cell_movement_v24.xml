@@ -60,6 +60,7 @@
             <Plot>
                 <Cells value="cell.id"/>
                 <Field symbol-ref="u1"/>
+                <CellArrows orientation="5 * move_dir"/>
             </Plot>
         </Gnuplotter>
     </Disabled>

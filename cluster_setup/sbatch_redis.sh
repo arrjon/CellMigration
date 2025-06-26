@@ -7,7 +7,6 @@
 #SBATCH --nodes=6
 #SBATCH --cpus-per-task=32
 #SBATCH --depend=afterany:17076448
-#SBATCH --account ag_irumls_mircea
 #SBATCH --mail-type=END
 #SBATCH --mail-user=jonas.arruda@uni-bonn.de
 

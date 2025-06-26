@@ -7,8 +7,7 @@ import seaborn as sns
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
-from summary_stats import reduced_coordinates_to_sumstat, compute_mean_summary_stats, \
-    compute_summary_stats, compute_autocorrelation
+from summary_stats import compute_summary_stats, compute_autocorrelation
 
 
 def plot_violin(ax, data, label, ylabel, alpha=0.05):
@@ -149,23 +148,23 @@ def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = 
     np.random.seed(seed)
 
     # compute the summary statistics
-    synthetic_summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in
-                                    test_sim]  # should be only one population
-    simulation_synth_summary_stats_list = [reduced_coordinates_to_sumstat(pop_sim) for pop_sim in posterior_sim]
+    (MSD_mean_synth,
+     TA_mean_synth,
+     VEL_mean_synth,
+     ad_mean_synth) = compute_summary_stats(test_sim[0]) # should be only one population
 
-    # compute the mean of the summary statistics
-    (ad_mean_synth, ad_mean_synth_averg,
-     MSD_mean_synth, MSD_mean_synth_averg,
-     TA_mean_synth, TA_mean_synth_averg,
-     VEL_mean_synth, VEL_mean_synth_averg,
-     WT_mean_synth, WT_mean_synth_averg) = compute_mean_summary_stats(synthetic_summary_stats_list)
-    (ad_mean_synth_sim, ad_mean_synth_sim_averg,
-     MSD_mean_synth_sim, MSD_mean_synth_sim_averg,
-     TA_mean_synth_sim, TA_mean_synth_sim_averg,
-     VEL_mean_synth_sim, VEL_mean_synth_sim_averg,
-     WT_mean_synth_sim, WT_mean_synth_sim_averg) = compute_mean_summary_stats(simulation_synth_summary_stats_list)
+    MSD_mean_synth_sim = []
+    TA_mean_synth_sim = []
+    VEL_mean_synth_sim = []
+    ad_mean_synth_sim = []
+    for pop_sim in posterior_sim:
+        sum_stat = compute_summary_stats(pop_sim)
+        MSD_mean_synth_sim.append(sum_stat[0])
+        TA_mean_synth_sim.append(sum_stat[1])
+        VEL_mean_synth_sim.append(sum_stat[2])
+        ad_mean_synth_sim.append(sum_stat[3])
 
-    fig, ax = plt.subplots(nrows=1, ncols=5, tight_layout=True, figsize=(12, 5))
+    fig, ax = plt.subplots(nrows=1, ncols=4, tight_layout=True, figsize=(10, 5))
 
     # always include the median (index 0)
     if len(ad_mean_synth_sim) == 1:
@@ -178,24 +177,20 @@ def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = 
     # Perform the Anderson-Darling k-sample test and plot for each statistic
     # it might happen that lists are empty, so we need to check for that and add a dummy value
     # Angle Degree
-    plot_violin(ax[0], [ad_mean_synth[0]] + [ad_mean_synth_sim[i] if len(ad_mean_synth_sim[i]) > 0 else [0, 0] for i in random_index],
+    plot_violin(ax[0], [ad_mean_synth] + [ad_mean_synth_sim[i] if len(ad_mean_synth_sim[i]) > 0 else [0, 0] for i in random_index],
                 'Angle Degree', 'Angle Degree (degrees)\nMean per Cell')
 
     # Mean Squared Displacement (MSD)
-    plot_violin(ax[1], [MSD_mean_synth[0]] + [MSD_mean_synth_sim[i] if len(MSD_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
+    plot_violin(ax[1], [MSD_mean_synth] + [MSD_mean_synth_sim[i] if len(MSD_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
                 'Mean Squared Displacement', 'MSD\nMean per Cell')
 
     # Turning Angle
-    plot_violin(ax[2], [TA_mean_synth[0]] + [TA_mean_synth_sim[i] if len(TA_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
+    plot_violin(ax[2], [TA_mean_synth] + [TA_mean_synth_sim[i] if len(TA_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
                 'Turning Angle', 'Turning Angle (radians)\nMean per Cell')
 
     # Velocity
-    plot_violin(ax[3], [VEL_mean_synth[0]] + [VEL_mean_synth_sim[i] if len(VEL_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
+    plot_violin(ax[3], [VEL_mean_synth] + [VEL_mean_synth_sim[i] if len(VEL_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
                 'Velocity', 'Velocity\nMean per Cell')
-
-    # Waiting Time
-    plot_violin(ax[4], [WT_mean_synth[0]] + [WT_mean_synth_sim[i] if len(WT_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
-                'Waiting Time', 'Waiting Time (sec)\nMean per Cell')
 
     if path is not None:
         plt.savefig(f'{path}.png')
@@ -281,10 +276,10 @@ def plot_autocorrelation(cell_population: np.ndarray, cell_population_2: np.ndar
     Plot the autocorrelation of the summary statistics of the cell population for different statistics.
     """
 
-    msd_list, ta_list, v_list, ad_list, wt_list = compute_summary_stats(cell_population)
+    msd_list, ta_list, v_list, ad_list = compute_summary_stats(cell_population)
     stats = [[msd_list, ta_list, v_list, ad_list]]
     if cell_population_2 is not None:
-        msd_list_2, ta_list_2, v_list_2, ad_list_2, wt_list_2 = compute_summary_stats(cell_population_2)
+        msd_list_2, ta_list_2, v_list_2, ad_list_2 = compute_summary_stats(cell_population_2)
         stats.append([msd_list_2, ta_list_2, v_list_2, ad_list_2])
         fig, ax = plt.subplots(nrows=2, ncols=4, sharex=True, sharey=True, tight_layout=True, figsize=(12, 4))
     else:

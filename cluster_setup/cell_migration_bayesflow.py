@@ -1,7 +1,6 @@
-# %%
 import os
-import pickle
 import sys
+import pickle
 from functools import partial
 
 import numpy as np
@@ -11,10 +10,8 @@ from fitmulticell.sumstat import SummaryStatistics
 from matplotlib import pyplot as plt
 
 from load_bayesflow_model import load_model, custom_loader
-from plotting_routines import plot_compare_summary_stats, plot_trajectory, \
-    plot_autocorrelation
-from summary_stats import reduced_coordinates_to_sumstat, reduce_to_coordinates, \
-    compute_mean_summary_stats
+from summary_stats import reduce_to_coordinates
+from plotting_routines import plot_compare_summary_stats, plot_trajectory, plot_autocorrelation
 
 # get the job array id and number of processors
 run_args = sys.argv[1]
@@ -96,8 +93,8 @@ limits_log = {key: (np.log10(val[0]), np.log10(val[1])) for key, val in limits.i
 
 prior = pyabc.Distribution(**{key: pyabc.RV("uniform", loc=lb, scale=ub-lb)
                               for key, (lb, ub) in limits_log.items()})
-param_names = list(obs_pars.keys())
-log_param_names = [f'log_{p}' for p in param_names]
+param_names = ['$m_{\\text{dir}}$', '$m_{\\text{rand}}$', '$w$', '$a$']
+log_param_names = ['$\log_{10}(m_{\\text{dir}})$', '$\log_{10}(m_{\\text{rand}})$', '$\log_{10}(w)$', '$\log_{10}(a)$']
 print(obs_pars)
 
 # %%
@@ -147,7 +144,7 @@ def generate_population_data(param_batch: np.ndarray, cells_in_population: int, 
 
 # %%
 
-presimulation_path = 'presimulations'
+presimulation_path = '../learned_summaries/presimulations'
 n_val_data = 100
 cells_in_population = 50
 n_params = len(obs_pars)
@@ -204,18 +201,6 @@ p_std = np.std(valid_data['prior_draws'], axis=0)
 print('Mean and std of data:', x_mean, x_std)
 print('Mean and std of parameters:', p_mean, p_std)
 
-# compute the mean of the summary statistics
-summary_stats_list_ = [reduced_coordinates_to_sumstat(t) for t in valid_data['sim_data']]
-(_, ad_averg, _, MSD_averg, _, TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list_,
-                                                                                                 remove_nan=False)
-direct_conditions_ = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
-# replace inf with -1
-direct_conditions_[np.isinf(direct_conditions_)] = np.nan
-
-summary_valid_max = np.nanmax(direct_conditions_, axis=0)
-summary_valid_min = np.nanmin(direct_conditions_, axis=0)
-
-
 if not training:
     exit()
 
@@ -226,8 +211,6 @@ trainer, map_idx_sim = load_model(
     x_std=x_std,
     p_mean=p_mean,
     p_std=p_std,
-    summary_valid_max=summary_valid_max,
-    summary_valid_min=summary_valid_min,
     generative_model=generative_model
 )
 
@@ -269,48 +252,51 @@ plt.savefig(f'{trainer.checkpoint_path}/recovery.png')
 
 
 # simulate test data
-test_params = np.log10(list(obs_pars.values()))
-if not os.path.exists(os.path.join(gp, 'test_sim.npy')):
-    test_sim_full = bayes_simulator(test_params[np.newaxis])
-    test_sim = test_sim_full['sim_data']
-    np.save(os.path.join(gp, 'test_sim.npy'), test_sim)
-else:
-    test_sim = np.load(os.path.join(gp, 'test_sim.npy'))
-    test_sim_full = {'sim_data': test_sim}
+for test_id in [0, 1, 2]:
+    print('test', test_id)
+    np.random.seed(test_id)
+    test_params = np.array(list(prior.rvs().values()))
+    if not os.path.exists(os.path.join(gp, f'test_sim_{test_id}.npy')):
+        test_sim_full = bayes_simulator(test_params[np.newaxis])
+        test_sim = test_sim_full['sim_data']
+        np.save(os.path.join(gp, f'test_sim_{test_id}.npy'), test_sim)
+    else:
+        test_sim = np.load(os.path.join(gp, f'test_sim_{test_id}.npy'))
+        test_sim_full = {'sim_data': test_sim}
 
-test_posterior_samples = trainer.amortizer.sample(trainer.configurator(test_sim_full), n_samples=100)
-test_posterior_samples = test_posterior_samples * p_std + p_mean
+    test_posterior_samples = trainer.amortizer.sample(trainer.configurator(test_sim_full), n_samples=100)
+    test_posterior_samples = test_posterior_samples * p_std + p_mean
 
-# %%
-# get posterior samples and simulate
-if not os.path.exists(trainer.checkpoint_path + '/posterior_sim.npy'):
-    # simulate the data
-    posterior_sim = bayes_simulator(test_posterior_samples)['sim_data']
-    np.save(trainer.checkpoint_path + '/posterior_sim.npy', posterior_sim)
-else:
-    posterior_sim = np.load(trainer.checkpoint_path+'/posterior_sim.npy')
-    map_sim = posterior_sim[map_idx_sim]
+    # %%
+    # get posterior samples and simulate
+    if not os.path.exists(trainer.checkpoint_path + f'/posterior_sim_{test_id}.npy'):
+        # simulate the data
+        posterior_sim = bayes_simulator(test_posterior_samples)['sim_data']
+        np.save(trainer.checkpoint_path + f'/posterior_sim_{test_id}.npy', posterior_sim)
+    else:
+        posterior_sim = np.load(trainer.checkpoint_path+f'/posterior_sim_{test_id}.npy')
+        map_sim = posterior_sim[map_idx_sim]
 
-# plot the summary statistics
-wasserstein_distance = plot_compare_summary_stats(test_sim, posterior_sim, path=f'{trainer.checkpoint_path}/Summary Stats')
+    # plot the summary statistics
+    wasserstein_distance = plot_compare_summary_stats(test_sim, posterior_sim, path=f'{trainer.checkpoint_path}/{test_id}-Summary Stats')
 
-# plot the trajectories
-plot_trajectory(test_sim[0], posterior_sim[0], path=f'{trainer.checkpoint_path}/Simulations', show_umap=True)
-plot_autocorrelation(test_sim[0], posterior_sim[0], path=f'{trainer.checkpoint_path}/Autocorrelation')
+    # plot the trajectories
+    plot_trajectory(test_sim[0], posterior_sim[0], path=f'{trainer.checkpoint_path}/{test_id}-Simulations', show_umap=True)
+    plot_autocorrelation(test_sim[0], posterior_sim[0], path=f'{trainer.checkpoint_path}/{test_id}-Autocorrelation')
 
-if trainer.amortizer.summary_loss is not None:
-    test_data_config = trainer.configurator(test_sim_full)
+    if trainer.amortizer.summary_loss is not None:
+        test_data_config = trainer.configurator(test_sim_full)
 
-    MMD_sampling_distribution, MMD_observed = trainer.mmd_hypothesis_test(
-        observed_data=test_data_config,
-        reference_data=valid_data_config,  # if not provided, will use the generative model
-        num_null_samples=500,
-        bootstrap=True  # if True, use the reference data as null samples
-    )
-    fig = bf.diagnostics.plot_mmd_hypothesis_test(MMD_sampling_distribution, MMD_observed)
-    fig.savefig(f'{trainer.checkpoint_path}/Synthetic MMD.png', bbox_inches='tight')
-    plt.show()
+        MMD_sampling_distribution, MMD_observed = trainer.mmd_hypothesis_test(
+            observed_data=test_data_config,
+            reference_data=valid_data_config,  # if not provided, will use the generative model
+            num_null_samples=500,
+            bootstrap=True  # if True, use the reference data as null samples
+        )
+        fig = bf.diagnostics.plot_mmd_hypothesis_test(MMD_sampling_distribution, MMD_observed)
+        fig.savefig(f'{trainer.checkpoint_path}/{test_id}-Synthetic MMD.png', bbox_inches='tight')
+        plt.show()
 
-print(f"Validation loss: {np.min(history['val_losses'])}")
-print(f"Wasserstein distance: {wasserstein_distance}")
+    print(f"Validation loss: {np.min(history['val_losses'])}")
+    print(f"Wasserstein distance: {wasserstein_distance}")
 del trainer

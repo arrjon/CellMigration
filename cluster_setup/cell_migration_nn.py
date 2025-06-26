@@ -11,8 +11,7 @@ from fitmulticell.sumstat import SummaryStatistics
 
 
 from load_bayesflow_model import load_model
-from summary_stats import reduced_coordinates_to_sumstat, reduce_to_coordinates, \
-    compute_mean_summary_stats
+from summary_stats import compute_summary_stats, reduce_to_coordinates
 
 # get the job array id and number of processors
 run_args = sys.argv[1]
@@ -202,17 +201,6 @@ p_std = np.std(valid_data['prior_draws'], axis=0)
 print('Mean and std of data:', x_mean, x_std)
 print('Mean and std of parameters:', p_mean, p_std)
 
-# compute the mean of the summary statistics
-summary_stats_list_ = [reduced_coordinates_to_sumstat(t) for t in valid_data['sim_data']]
-(_, ad_averg, _, MSD_averg, _, TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list_,
-                                                                                                 remove_nan=False)
-direct_conditions_ = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
-# replace inf with -1
-direct_conditions_[np.isinf(direct_conditions_)] = np.nan
-
-summary_valid_max = np.nanmax(direct_conditions_, axis=0)
-summary_valid_min = np.nanmin(direct_conditions_, axis=0)
-
 
 if not training:
     exit()
@@ -224,8 +212,6 @@ trainer, map_idx_sim = load_model(
     x_std=x_std,
     p_mean=p_mean,
     p_std=p_std,
-    summary_valid_max=summary_valid_max,
-    summary_valid_min=summary_valid_min,
     generative_model=generative_model
 )
 
@@ -264,9 +250,6 @@ valid_x = valid_data_config['summary_conditions']
 valid_y = valid_data_config['parameters']
 
 if not os.path.exists(trainer.checkpoint_path):
-    #schedule = tf.keras.optimizers.schedules.CosineDecay(  # seems to work better without decay
-    #    initial_learning_rate=0.0005, decay_steps=epochs, name="lr_decay"
-    #)
     optimizer = tf.keras.optimizers.Adam(global_clipnorm=1.0)
 
     summary_net.compile(

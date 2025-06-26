@@ -1,16 +1,15 @@
 #%%
 import argparse
 import logging
-import math
 import os
 import pickle
 from functools import partial
-from typing import Optional
-from typing import Union
+from typing import Optional, Union
 
 import keras
 import numpy as np
 import pandas as pd
+import math
 import pyabc
 import scipy.stats as stats
 import tensorflow as tf
@@ -25,6 +24,11 @@ from fitmulticell.sumstat import SummaryStatistics
 from pyabc.sampler import RedisEvalParallelSampler
 from tensorflow.keras.layers import Dense, GRU, LSTM, Bidirectional
 from tensorflow.keras.models import Sequential
+
+test_id = 0
+run_manual_sumstats = True
+use_npe_summaries = False
+load_synthetic_data = True
 
 
 # defining the summary statistics functions
@@ -106,7 +110,7 @@ def MSD_nan(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> n
     data = np.column_stack([x, y])
 
     # Calculate MSD using tidynamics, treating NaNs correctly
-    msd = [0]
+    msd = []
     for lag in range(1, len(data) if all_time_lags else 2):
         diffs = []
         for t in range(len(data) - lag):
@@ -119,6 +123,8 @@ def MSD_nan(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> n
             msd.append(np.mean(diffs))
         else:
             msd.append(np.nan)  # If no valid pairs exist for this lag
+    if len(msd) == 0:
+        msd = [0]
     return np.array(msd)
 
 
@@ -140,38 +146,6 @@ def angle_degree(data_dict: dict) -> np.ndarray:
     for x, y in zip(vx, vy):
         list_angle_degrees.append(math.degrees(math.atan2(x, y)))
     return np.array(list_angle_degrees)
-
-
-def mean_waiting_time(
-        data_dict: dict, time_interval: float =30., threshold: float = np.pi/4
-) -> Union[np.ndarray, float]:
-    """Compute the mean waiting time of the cell until it changes direction."""
-    cell = np.stack([data_dict['x'], data_dict['y']], axis=1)
-    time_steps = len(data_dict['x'])
-    waiting_times = []
-    last_change = 0
-
-    # Compute initial direction
-    initial_direction = cell[1] - cell[0]
-    last_direction = np.arctan2(initial_direction[1], initial_direction[0])
-
-    for t in range(2, time_steps):
-        # Compute current direction
-        current_vector = cell[t] - cell[t-1]
-        current_direction = np.arctan2(current_vector[1], current_vector[0])
-
-        # Check if direction has changed
-        if abs(current_direction - last_direction) > threshold:
-            waiting_times.append((t-1) - last_change)
-            last_change = t-1
-
-        last_direction = current_direction
-
-    if waiting_times:
-        mean_wt = np.mean(waiting_times) * time_interval
-    else:
-        mean_wt = np.nan  # If no direction change occurred
-    return mean_wt
 
 
 # my functions
@@ -238,22 +212,6 @@ def compute_mean(x: Union[float, int, list, np.ndarray]) -> Union[float, np.floa
         return np.nan
 
 
-def compute_var(x: Union[float, int, list, np.ndarray]) -> Union[float, np.floating]:
-    """
-    Compute the variance if x is a non-empty list.
-    Return x if it's a float/int.
-    Return np.nan if it's an empty list or unrecognized type.
-    """
-    if isinstance(x, (list, np.ndarray)):
-        if len(x) == 0:
-            return np.nan
-        return np.nanvar(x)
-    elif isinstance(x, (int, float)):
-        return 0.0
-    else:
-        return np.nan
-
-
 def compute_autocorrelation(list_statistic: list) -> list:
     """
     Compute the autocorrelation of a list of statistics.
@@ -276,13 +234,12 @@ def compute_summary_stats(cell_population: np.ndarray) -> (list, list, list, lis
     Compute the statistics of the reduced/visible coordinates of each cell in a cell population.
 
     :param cell_population: 3D array of cell populations
-    :return: list of msd, ta, v, ad, wt
+    :return: list of msd, ta, v, ad
     """
     msd_list = []
     ta_list = []
     v_list = []
     ad_list = []
-    wt_list = []
 
     cell_count = cell_population.shape[0]
     # check if sim_dict_cut is empty
@@ -292,13 +249,12 @@ def compute_summary_stats(cell_population: np.ndarray) -> (list, list, list, lis
         if all(np.isnan(sim_dict['x'])):
             continue
         else:
-            msd_list.append(MSD(sim_dict))
-            ta_list.append(turning_angle(sim_dict))
-            v_list.append(velocity(sim_dict))
-            ad_list.append(angle_degree(sim_dict))
-            wt_list.append(mean_waiting_time(sim_dict))
+            msd_list.append(compute_mean(MSD(sim_dict, all_time_lags=False)))  # mean just for formatting
+            ta_list.append(compute_mean(turning_angle(sim_dict)))
+            v_list.append(compute_mean(velocity(sim_dict)))
+            ad_list.append(compute_mean(angle_degree(sim_dict)))
 
-    return msd_list, ta_list, v_list, ad_list, wt_list
+    return remove_nan(msd_list), remove_nan(ta_list), remove_nan(v_list), remove_nan(ad_list)
 
 
 def compute_MSD_lags(cell_population: np.ndarray) -> np.ndarray:
@@ -319,44 +275,6 @@ def compute_MSD_lags(cell_population: np.ndarray) -> np.ndarray:
     msd = np.stack(msd_list, axis=0)
     msd[msd < 0] = 0  # algorithm can give smaller 0 values due to numerical impression
     return msd
-
-
-def reduced_coordinates_to_sumstat(cell_population: np.ndarray) -> dict:
-    """
-    Compute the summary statistics (mean per cell) of the reduced/visible coordinates of the cell population.
-
-    :param cell_population: 3D array of cell populations
-    :return: dictionary of summary statistics
-    """
-    msd_list, ta_list, v_list, ad_list, wt_list = compute_summary_stats(cell_population)
-
-    if not msd_list:
-        return {'msd_mean': [np.nan], 'msd_var': [np.nan],
-                'ta_mean': [np.nan], 'ta_var': [np.nan],
-                'v_mean': [np.nan], 'v_var': [np.nan],
-                'ad_mean': [np.nan], 'ad_var': [np.nan],
-                'wt_mean': [np.nan], 'wt_var': [np.nan]}
-
-    # get the mean of list of lists with different lengths
-    msd_mean = [compute_mean(x) for x in msd_list]
-    ta_mean = [compute_mean(x) for x in ta_list]
-    v_mean = [compute_mean(x) for x in v_list]
-    ad_mean = [compute_mean(x)  for x in ad_list]
-    wt_mean = [compute_mean(x) for x in wt_list]
-
-    # get the variance of list of lists with different lengths
-    msd_var = [compute_var(x) for x in msd_list]
-    ta_var = [compute_var(x) for x in ta_list]
-    v_var = [compute_var(x) for x in v_list]
-    ad_var = [compute_var(x) for x in ad_list]
-    wt_var = [compute_var(x) for x in wt_list]
-
-    sim = {'msd_mean': msd_mean, 'msd_var': msd_var,
-           'ta_mean': ta_mean, 'ta_var': ta_var,
-           'v_mean': v_mean, 'v_var': v_var,
-           'ad_mean': ad_mean, 'ad_var': ad_var,
-           'wt_mean': wt_mean, 'wt_var': wt_var}
-    return sim
 
 
 def reduce_to_coordinates(sumstat: dict,
@@ -408,37 +326,12 @@ def reduce_to_coordinates(sumstat: dict,
     return sim_list
 
 
-def clean_and_average(stat_list: list, remove_nan: bool):
+def remove_nan(stat_list: list):
     """
     Remove NaN and Inf from the list and compute the mean.
     """
-    cleaned = [[x for x in stat if not np.isnan(x) and not np.isinf(x)] for stat in stat_list]
-    averaged = [np.mean(stat) if len(stat) > 0 else np.nan for stat in cleaned]
-    if remove_nan:
-        averaged = [x for x in averaged if not np.isnan(x) and not np.isinf(x)]
-    return cleaned, np.array(averaged)
-
-
-def compute_mean_summary_stats(simulation_list: list[dict], remove_nan: bool = True) -> list:
-    """
-    Compute the mean summary statistics of the simulation list.
-
-    param
-        simulation_list: list of cell populations
-        remove_nan: remove nan and inf values from the averaged summary statistics of a population
-    :return:
-    """
-
-    # Extract the statistics from the simulations
-    stat_keys = ['ad_mean', 'msd_mean', 'ta_mean', 'v_mean', 'wt_mean']
-    result = []
-
-    for key in stat_keys:
-        stat_list = [sim[key] for sim in simulation_list]
-        cleaned, averaged = clean_and_average(stat_list, remove_nan)
-        result.extend([cleaned, averaged])
-
-    return result
+    cleaned = [x for x in stat_list if not np.isnan(x) and not np.isinf(x)]
+    return cleaned
 
 
 def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: int):
@@ -534,29 +427,15 @@ def custom_loader(file_path):
     return loaded_presimulations
 
 
-def configurator(forward_dict: dict,
-                 x_mean: np.ndarray, x_std: np.ndarray,
-                 p_mean: np.ndarray, p_std: np.ndarray,
-                 summary_valid_min: np.ndarray = None, summary_valid_max: np.ndarray = None,
-                 manual_summary: bool = False) -> dict:
+def configurator(
+        forward_dict: dict,
+        x_mean: np.ndarray, x_std: np.ndarray,
+        p_mean: np.ndarray, p_std: np.ndarray,
+) -> dict:
     out_dict = {}
 
     # Extract data
     x = forward_dict["sim_data"]
-
-    # compute manual summary statistics
-    if manual_summary:
-        summary_stats_list = [reduced_coordinates_to_sumstat(t) for t in x]
-        # compute the mean of the summary statistics
-        (_, ad_averg, _, MSD_averg, _,
-         TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list, remove_nan=False)
-        direct_conditions = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
-        # normalize statistics
-        direct_conditions = (direct_conditions - summary_valid_min) / (summary_valid_max - summary_valid_min)
-        # replace nan or inf with -1
-        direct_conditions[np.isinf(direct_conditions)] = -1
-        direct_conditions[np.isnan(direct_conditions)] = -1
-        out_dict['direct_conditions'] = direct_conditions.astype(np.float32)
 
     # Normalize data
     x = (x - x_mean) / x_std
@@ -580,6 +459,8 @@ def configurator(forward_dict: dict,
         params = (params - p_mean) / p_std
         out_dict['parameters'] = params.astype(np.float32)
     return out_dict
+
+
 
 class SummaryNetwork(tf.keras.Model):
     """Network to summarize the population of cells."""
@@ -663,7 +544,7 @@ class SummaryNetwork(tf.keras.Model):
 # define the network
 class GroupSummaryNetwork(tf.keras.Model):
     """Network to summarize the data of groups of cells.  Each group is passed through a series of convolutional layers
-    followed by an LSTM layer. The output of the LSTM layer is then pooled across the groups and dense layer applied
+    followed by a GRU layer. The output of the GRU layer is then pooled across the groups and dense layer applied
     to obtain a summary of fixed dimensionality. The network is invariant to the order of the groups.
     """
 
@@ -711,7 +592,7 @@ class GroupSummaryNetwork(tf.keras.Model):
 
     def call(self, x, **kwargs):
         """Performs a forward pass through the network by first passing `x` through the same rnn network for
-        each household and then pooling the outputs across households.
+        each cell and then pooling the outputs across cells.
 
         Parameters
         ----------
@@ -775,7 +656,6 @@ class GroupSummaryNetwork(tf.keras.Model):
 def load_model(model_id: int,
                x_mean: np.ndarray, x_std: np.ndarray,
                p_mean: np.ndarray, p_std: np.ndarray,
-               summary_valid_max: np.ndarray = None, summary_valid_min: np.ndarray = None,
                generative_model=None):
     # Set the logger to the desired level
     tf.get_logger().setLevel('ERROR')  # This will suppress warnings and info logs from TensorFlow
@@ -786,34 +666,22 @@ def load_model(model_id: int,
     use_attention = True
     use_bidirectional = True
     summary_loss = 'MMD'
-    use_manual_summary = False
     summary_net = None  # will be defined later
     if model_id == 0:
         checkpoint_path = 'amortizer-cell-migration-attention-6'
         map_idx_sim = 52
     elif model_id == 1:
-        checkpoint_path = 'amortizer-cell-migration-attention-6-manual'
-        use_manual_summary = True
-        map_idx_sim = 6
-    elif model_id == 2:
         checkpoint_path = 'amortizer-cell-migration-attention-7'
         num_coupling_layers = 7
         map_idx_sim = 52
-    elif model_id == 3:
-        checkpoint_path = 'amortizer-cell-migration-attention-7-manual'
-        num_coupling_layers = 7
-        use_manual_summary = True
-        map_idx_sim = 28
-    elif model_id == 4:
+    elif model_id == 2:
         checkpoint_path = 'amortizer-cell-migration-attention-8'
         num_coupling_layers = 8
         map_idx_sim = 69
-    elif model_id == 5:
-        checkpoint_path = 'amortizer-cell-migration-attention-8-manual'
-        num_coupling_layers = 8
-        use_manual_summary = True
-        map_idx_sim = 86
+    elif model_id == 3:
+        raise('Checkpoint path not found')
     elif model_id == 10:
+        print('load only summary model without checkpoint')
         checkpoint_path = 'amortizer-only-summary'
         num_coupling_layers = 1
         map_idx_sim = np.nan
@@ -829,41 +697,49 @@ def load_model(model_id: int,
         checkpoint_path = "/home/jarruda_hpc/CellMigration/synth_data_params_bayesflow/" + checkpoint_path
 
     if summary_net is None:
-        summary_net = GroupSummaryNetwork(summary_dim=n_params * 2,
-                                          rnn_units=32,
-                                          use_attention=use_attention,
-                                          bidirectional=use_bidirectional)
-    inference_net = InvertibleNetwork(num_params=n_params,
-                                      num_coupling_layers=num_coupling_layers,
-                                      coupling_design='spline',
-                                      coupling_settings={
-                                          "num_dense": num_dense,
-                                          "dense_args": dict(
-                                              activation='relu',
-                                              kernel_regularizer=tf.keras.regularizers.l2(1e-4),
-                                          ),
-                                          "dropout_prob": 0.2,
-                                          "bins": 16,
-                                      })
+        summary_net = GroupSummaryNetwork(
+            summary_dim=n_params * 2,
+            rnn_units=32,
+            use_attention=use_attention,
+            bidirectional=use_bidirectional
+        )
 
-    amortizer = AmortizedPosterior(inference_net=inference_net, summary_net=summary_net,
-                                   summary_loss_fun=summary_loss)
+    inference_net = InvertibleNetwork(
+        num_params=n_params,
+        num_coupling_layers=num_coupling_layers,
+        coupling_design='spline',
+        coupling_settings={
+            "num_dense": num_dense,
+            "dense_args": dict(
+                activation='relu',
+                kernel_regularizer=tf.keras.regularizers.l2(1e-4),
+            ),
+            "dropout_prob": 0.2,
+            "bins": 16,
+        }
+    )
+
+    amortizer = AmortizedPosterior(
+        inference_net=inference_net,
+        summary_net=summary_net,
+        summary_loss_fun=summary_loss
+    )
 
     # Disable logging
     logging.disable(logging.CRITICAL)
 
     # build the trainer with networks and generative model
     max_to_keep = 17
-    trainer = Trainer(amortizer=amortizer,
-                      configurator=partial(configurator,
-                                           x_mean=x_mean, x_std=x_std,
-                                           p_mean=p_mean, p_std=p_std,
-                                           summary_valid_max=summary_valid_max, summary_valid_min=summary_valid_min,
-                                           manual_summary=use_manual_summary),
-                      generative_model=generative_model,
-                      checkpoint_path=checkpoint_path,
-                      skip_checks=True,  # simulation takes too much time
-                      max_to_keep=max_to_keep)
+    trainer = Trainer(
+        amortizer=amortizer,
+        configurator=partial(configurator,
+                             x_mean=x_mean, x_std=x_std,
+                             p_mean=p_mean, p_std=p_std),
+        generative_model=generative_model,
+        checkpoint_path=checkpoint_path,
+        skip_checks=True,  # simulation takes too much time
+        max_to_keep=max_to_keep
+    )
 
     # check if file exist
     if os.path.exists(checkpoint_path):
@@ -890,9 +766,7 @@ def load_model(model_id: int,
         best_valid_epoch = recent_losses['Loss'].idxmin() + 1  # checkpoints are 1-based indexed
         new_checkpoint = trainer.manager.latest_checkpoint.rsplit('-', 1)[0] + f'-{best_valid_epoch}'
         trainer.checkpoint.restore(new_checkpoint)
-        #print(f"Networks loaded from {new_checkpoint} with {recent_losses['Loss'][best_valid_epoch - 1]} validation loss")
-    else:
-        raise ValueError(f'Checkpoint path {checkpoint_path} not found')
+        # print(f"Networks loaded from {new_checkpoint} with {recent_losses['Loss'][best_valid_epoch - 1]} validation loss")
 
     # Re-enable logging
     logging.disable(logging.NOTSET)
@@ -901,13 +775,10 @@ def load_model(model_id: int,
 
 
 # get the job array id and number of processors
-job_array_id = int(os.environ.get('SLURM_ARRAY_TASK_ID', 0))
 n_procs = int(os.environ.get('SLURM_CPUS_PER_TASK', 1))
-print(job_array_id)
+print('test_id', test_id)
 on_cluster = True
 population_size = 1000
-run_old_sumstats = True
-load_synthetic_data = True
 
 parser = argparse.ArgumentParser(description='Parse necessary arguments')
 parser.add_argument('-pt', '--port', type=str, default="50004",
@@ -945,14 +816,12 @@ def make_sumstat_dict(data: Union[dict, np.ndarray]) -> dict:
         data = data[key]
     data = data[0]  # only one sample
     # compute the summary statistics
-    summary_stats_dict = reduced_coordinates_to_sumstat(data)
-    (ad_mean, _, msd_mean, _, ta_mean, _, vel_mean, _, wt_mean, _) = compute_mean_summary_stats([summary_stats_dict], remove_nan=False)
+    msd_list, ta_list, v_list, ad_list = compute_summary_stats(data)
     cleaned_dict = {
-        'ad': np.array(ad_mean).flatten(),
-        'msd': np.array(msd_mean).flatten(),
-        'ta': np.array(ta_mean).flatten(),
-        'vel': np.array(vel_mean).flatten(),
-        'wt': np.array(wt_mean).flatten()
+        'msd': np.array(msd_list).flatten(),
+        'ta': np.array(ta_list).flatten(),
+        'vel': np.array(v_list).flatten(),
+        'ad': np.array(ad_list).flatten(),
     }
     return cleaned_dict
 
@@ -989,7 +858,7 @@ if on_cluster:
         clean_simulation=True,
         raise_on_error=False, sumstat=sumstat)
 
-    # todo: remember also change tiff path in model.xml!
+    # note: remember also change tiff path in model.xml!
 else:
     # define the model object
     model = morpheus_model.MorpheusModel(
@@ -1018,18 +887,21 @@ limits_log = {key: (np.log10(val[0]), np.log10(val[1])) for key, val in limits.i
 
 prior = pyabc.Distribution(**{key: pyabc.RV("uniform", loc=lb, scale=ub-lb)
                               for key, (lb, ub) in limits_log.items()})
-param_names = list(obs_pars.keys())
+param_names = ['$m_{\\text{dir}}$', '$m_{\\text{rand}}$', '$w$', '$a$']
+log_param_names = ['$\log_{10}(m_{\\text{dir}})$', '$\log_{10}(m_{\\text{rand}})$', '$\log_{10}(w)$', '$\log_{10}(a)$']
 print(obs_pars)
 #%%
 if load_synthetic_data:
     # simulate test data
     test_params = np.array(list(obs_pars_log.values()))
-    if not os.path.exists(os.path.join(gp, 'test_sim.npy')):
+    if not os.path.exists(os.path.join(gp, f'test_sim_{test_id}.npy')):
         raise FileNotFoundError('Test data not found')
     else:
-        test_sim = np.load(os.path.join(gp, 'test_sim.npy'))
+        test_sim = np.load(os.path.join(gp, f'test_sim_{test_id}.npy'))
+
+    results_path = f'abc_results_{test_id}'
 else:
-    # load real data
+    # load real data in morpheus format
     real_data, real_data_full = load_real_data(data_id=1,
                                                max_sequence_length=max_sequence_length,
                                                cells_in_population=cells_in_population)
@@ -1048,7 +920,6 @@ distances = {
     'msd': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='msd')),
     'ta': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='ta')),
     'vel': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='vel')),
-    'wt': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='wt'))
 }
 adaptive_weights = {
     d: 1. / max(np.max(make_sumstat_dict(test_sim)[d]), 1e-4) for d in distances.keys()
@@ -1058,10 +929,10 @@ adaptive_weights = {
 adaptive_wasserstein_distance = pyabc.distance.AdaptiveAggregatedDistance(
     distances=list(distances.values()),
     initial_weights=list(adaptive_weights.values()),
-    log_file=os.path.join(gp, f"adaptive_distance_log.txt")
+    log_file=os.path.join(gp, f"adaptive_distance_log_{test_id}.txt")
 )
 #%%
-if run_old_sumstats:
+if run_manual_sumstats:
     redis_sampler = RedisEvalParallelSampler(host=args.ip, port=args.port,
                                              adapt_look_ahead_proposal=False,
                                              look_ahead=False)
@@ -1072,7 +943,7 @@ if run_old_sumstats:
                        population_size=population_size,
                        sampler=redis_sampler)
 
-    db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_wasserstein_sumstats_adaptive.db")
+    db_path = os.path.join(gp, f"{'synthetic_'+str(test_id) if load_synthetic_data else 'real'}_test_wasserstein_sumstats_adaptive.db")
     history = abc.new("sqlite:///" + db_path, make_sumstat_dict(test_sim))
 
     #start the abc fitting
@@ -1093,25 +964,13 @@ p_mean = np.mean(valid_data['prior_draws'], axis=0)
 p_std = np.std(valid_data['prior_draws'], axis=0)
 print('Mean and std of data:', x_mean, x_std)
 print('Mean and std of parameters:', p_mean, p_std)
-
-# compute the mean of the summary statistics
-summary_stats_list_ = [reduced_coordinates_to_sumstat(t) for t in valid_data['sim_data']]
-(_, ad_averg, _, MSD_averg, _, TA_averg, _, VEL_averg, _, WT_averg) = compute_mean_summary_stats(summary_stats_list_,
-                                                                                                 remove_nan=False)
-
-direct_conditions_ = np.stack([ad_averg, MSD_averg, TA_averg, VEL_averg, WT_averg]).T
-# replace inf with -1
-direct_conditions_[np.isinf(direct_conditions_)] = np.nan
-
-summary_valid_max = np.nanmax(direct_conditions_, axis=0)
-summary_valid_min = np.nanmin(direct_conditions_, axis=0)
-
 #%%
 # use trained neural net as summary statistics
-def make_sumstat_dict_nn(
-        data: Union[dict, np.ndarray],
-        model_id: int = 10,  # 5 for model trained with BayesFlow, 10 for model trained on posterior mean
-) -> dict:
+def make_sumstat_dict_nn(data: Union[dict, np.ndarray], use_npe_summaries: bool = True) -> dict:
+    if use_npe_summaries:
+        model_id = 5  # todo: best network for NPE summaries
+    else:
+        model_id = 10
     if isinstance(data, dict):
         # get key
         key = list(data.keys())[0]
@@ -1123,8 +982,6 @@ def make_sumstat_dict_nn(
         x_std=x_std,
         p_mean=p_mean,
         p_std=p_std,
-        summary_valid_max=summary_valid_max,
-        summary_valid_min=summary_valid_min,
     )
 
     # configures the input for the network
@@ -1154,7 +1011,7 @@ if on_cluster:
         clean_simulation=True,
         raise_on_error=False, sumstat=sumstat)
 
-    # todo: remember also change tiff path in model.xml!
+    # note: remember also change tiff path in model.xml!
 else:
     # define the model object
     model_nn = morpheus_model.MorpheusModel(
@@ -1164,15 +1021,20 @@ else:
         raise_on_error=False, sumstat=sumstat)
 
 #%%
-obs_nn = make_sumstat_dict_nn(test_sim)
+obs_nn = make_sumstat_dict_nn(test_sim, use_npe_summaries=use_npe_summaries)
 redis_sampler = RedisEvalParallelSampler(host=args.ip, port=args.port,
                                          adapt_look_ahead_proposal=False,
                                          look_ahead=False)
 abc_nn = pyabc.ABCSMC(model_nn, prior, # here we use now the Euclidean distance
                    population_size=population_size,
-                   summary_statistics=make_sumstat_dict_nn,
+                   summary_statistics=partial(make_sumstat_dict_nn, use_npe_summaries=use_npe_summaries),
                    sampler=redis_sampler)
-db_path = os.path.join(gp, f"{'synthetic' if load_synthetic_data else 'real'}_test_nn_sumstats_posterior_mean.db")
+if use_npe_summaries:
+    db_path = os.path.join(gp,
+                           f"{'synthetic_'+str(test_id) if load_synthetic_data else 'real'}_test_nn_sumstats.db")
+else:
+    db_path = os.path.join(gp,
+                           f"{'synthetic_' + str(test_id) if load_synthetic_data else 'real'}_test_nn_sumstats_posterior_mean.db")
 print(db_path)
 history = abc_nn.new("sqlite:///" + db_path, obs_nn)
 
