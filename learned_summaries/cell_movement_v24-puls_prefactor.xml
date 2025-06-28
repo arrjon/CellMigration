@@ -35,7 +35,7 @@
     </Time>
     <Analysis>
         <ModelGraph format="dot" reduced="false" include-tags="#untagged"/>
-        <Logger time-step="30">
+        <Logger time-step="1">
             <Input>
                 <Symbol symbol-ref="nodeL"/>
                 <Symbol symbol-ref="cell.volume"/>
@@ -116,10 +116,6 @@
         <Variable symbol="time_last_puls" value="0.0"/>
         <Event trigger="when-true" name="puls-event">
             <Condition>time >= time_last_puls + puls_period</Condition>
-            <!--    <Disabled>
-        <Intermediate symbol="puls" value="mod(puls+1,2) "/>
-    </Disabled>
--->
             <Rule symbol-ref="puls">
                 <Expression>mod(puls+1,2)  </Expression>
             </Rule>
@@ -127,7 +123,7 @@
                 <Expression>time</Expression>
             </Rule>
         </Event>
-        <Field symbol="u1" value="puls*peak_concentration/(2*pi*(sigma0^2))*exp(-1/2*(((space.x)-(x0_sim))^2+ ((space.y)-(y0_sim))^2)/(sigma0^2)) ">
+        <Field symbol="u1" value="peak_concentration/(2*pi*(sigma0^2))*exp(-1/2*(((space.x)-(x0_sim))^2+ ((space.y)-(y0_sim))^2)/(sigma0^2)) ">
             <!--    <Disabled>
         <Diffusion rate="D_num"/>
     </Disabled>

@@ -35,7 +35,7 @@
     </Time>
     <Analysis>
         <ModelGraph format="dot" reduced="false" include-tags="#untagged"/>
-        <Logger time-step="30">
+        <Logger time-step="1">
             <Input>
                 <Symbol symbol-ref="nodeL"/>
                 <Symbol symbol-ref="cell.volume"/>
