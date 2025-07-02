@@ -120,6 +120,9 @@ def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, s
         ax[i].set_xlabel(name_plots[i])
 
     ax[0].set_ylabel('Weighted\nWasserstein Distance')
+    for a in ax:
+        a.set_yscale('log')
+        a.set_xticks(np.arange(len(sumstats_list)), labels=['' for _ in range(len(sumstats_list))])
 
     if labels is not None:
         median_patch = Patch(color='grey', label='Median')

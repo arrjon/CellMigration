@@ -24,14 +24,13 @@
     </Space>
     <Time>
         <StartTime value="0"/>
-        <StopTime value="600000"/>
+        <StopTime value="10000"/>
         <!--    <Disabled>
         <StopTime value="5000"/>
     </Disabled>
 -->
         <TimeSymbol symbol="time"/>
         <SaveInterval value="0"/>
-        <RandomSeed value="0"/>
     </Time>
     <Analysis>
         <ModelGraph format="dot" reduced="false" include-tags="#untagged"/>
@@ -41,10 +40,7 @@
                 <Symbol symbol-ref="cell.volume"/>
                 <Symbol symbol-ref="cell.center.x"/>
                 <Symbol symbol-ref="cell.center.y"/>
-                <!--    <Disabled>
-        <Symbol symbol-ref="puls"/>
-    </Disabled>
--->
+                <Symbol symbol-ref="puls"/>
             </Input>
             <Output>
                 <TextOutput/>
@@ -91,7 +87,7 @@
     <Global>
         <Constant symbol="tumble.run_duration" value="0"/>
         <Constant symbol="cell_nodes" name="CPM cell volume (μm^2 / 1.31^2)" value="cell_nodes_real / (nodeL*nodeL)"/>
-        <Constant symbol="cell_nodes_real" name="CPM cell volume μm^2" value="50"/>
+        <Constant symbol="cell_nodes_real" name="CPM cell volume μm^2" value="143"/>
         <Constant symbol="x0_chemokine" name="position chemokine source in um" value="x0_sim * nodeL"/>
         <Constant symbol="y0_chemokine" name="position chemokine source in μm" value="hole.diam+hole.diam/2+270"/>
         <Field symbol="dummy" value="-1"/>
@@ -108,10 +104,10 @@
         <Constant symbol="sigma0" name="spread of inital concentration (std)" value="550"/>
         <Constant symbol="nodeL" name="factor from simulation lattice ength to μm" value="1.31"/>
         <Constant symbol="peak_concentration" name="peak concentration of the chemokine (total of 7ng mass of the chemokine)" value="7e+6"/>
-        <Constant symbol="num_cells" name="number of cell in simulation" value="50"/>
+        <Constant symbol="num_cells" name="number of cell in simulation" value="143"/>
         <Constant symbol="hole.diam" name="diameter of the hole in μm" value="1500"/>
         <Constant symbol="hole.diam_sim" name="diameter of the hole in simulation" value="hole.diam/nodeL"/>
-        <Constant symbol="puls_period" value="30"/>
+        <Constant symbol="puls_period" value="120"/>
         <Variable symbol="puls" value="1.0 "/>
         <Variable symbol="time_last_puls" value="0.0"/>
         <Event trigger="when-true" name="puls-event">
@@ -120,8 +116,14 @@
                 <Expression>mod(puls+1,2)  </Expression>
             </Rule>
             <Rule symbol-ref="time_last_puls">
-                <Expression>time</Expression>
+                <Expression>10000</Expression>
             </Rule>
+            <!--    <Disabled>
+        <Rule symbol-ref="time_last_puls">
+            <Expression>time</Expression>
+        </Rule>
+    </Disabled>
+-->
         </Event>
         <Field symbol="u1" value="peak_concentration/(2*pi*(sigma0^2))*exp(-1/2*(((space.x)-(x0_sim))^2+ ((space.y)-(y0_sim))^2)/(sigma0^2)) ">
             <!--    <Disabled>

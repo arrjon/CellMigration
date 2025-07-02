@@ -13,7 +13,6 @@ import math
 import pyabc
 import scipy.stats as stats
 import tensorflow as tf
-import tidynamics  # to get sliding history stats in N*logN instead of N^2
 from bayesflow import default_settings as defaults
 from bayesflow.amortizers import AmortizedPosterior
 from bayesflow.helper_networks import MultiConv1D
@@ -78,62 +77,77 @@ def turning_angle(data_dict: dict) -> np.ndarray:
     return np.array(turning_angles)
 
 
-
-def velocity(data_dict: dict) -> np.ndarray:
+def velocity(data_dict: dict, dt: float = 30) -> np.ndarray:
     """Compute the velocity of the cell."""
-    x = data_dict['x']
-    y = data_dict['y']
+    x = np.asarray(data_dict['x'])
+    y = np.asarray(data_dict['y'])
     vx = np.diff(x)
     vy = np.diff(y)
-    v = np.sqrt(vx ** 2 + vy ** 2)
+    v = np.sqrt(vx ** 2 + vy ** 2) / dt
     return v
 
 
-def MSD_tidy(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> Union[np.ndarray, float]:  # this should be used as it is faster
-    """Compute the mean square displacement of the cell for all possible time lags.
-    If nan values are present, return nan."""
-    msd = tidynamics.msd(
-        np.column_stack([data_dict[x_name], data_dict[y_name]]))
+def compute_msd(
+        trajectory: dict,
+        all_time_lags: bool = True,
+        dt: float = 30.0
+) -> Union[np.ndarray, float]:
+    """
+    Compute the mean square displacement (MSD) on the interval where both x and y are observed.
+
+    Parameters
+    ----------
+    trajectory : dict
+        Must contain 1D arrays at keys x_key and y_key.
+    all_time_lags : bool
+        If True, return MSD for each lag from 1 up to the length of the observed window minus 1.
+        If False, return only the maximal-lag MSD (first→last) divided by sqrt(total_time).
+    dt : float
+        Time step between successive frames.
+
+    Returns
+    -------
+    np.ndarray or float
+        - If all_time_lags=True: 1D array of length M-1 (where M is #observed points) with MSD at each lag.
+        - If all_time_lags=False: single float = MSD(max_lag)/sqrt(max_lag * dt).
+    """
+    x = np.asarray(trajectory['x'], dtype=float)
+    y = np.asarray(trajectory['y'], dtype=float)
+    if x.shape != y.shape:
+        raise ValueError("x and y must have the same length")
+
+    # find the window where both x and y are non-NaN
+    valid = (~np.isnan(x)) & (~np.isnan(y))
+    idx = np.where(valid)[0]
+    if idx.size < 2:
+        # fewer than 2 valid points → no displacement
+        return np.array([]) if all_time_lags else np.nan
+
+    start, end = idx[0], idx[-1]
+    x_obs = x[start:end + 1]
+    y_obs = y[start:end + 1]
+    M = len(x_obs)
+    max_lag = M - 1
+
+    # fast path: only the max-lag MSD from first→last
     if not all_time_lags:
-        return msd[1]
+        dx = x_obs[-1] - x_obs[0]
+        dy = y_obs[-1] - y_obs[0]
+        msd_end = dx * dx + dy * dy
+        total_time = max_lag * dt
+        return msd_end / np.sqrt(total_time)
+
+    # full MSD curve
+    msd = np.full(max_lag, np.nan, dtype=float)
+    for lag in range(1, M):
+        # displacements for this lag
+        del_x = x_obs[lag:] - x_obs[:-lag]
+        del_y = y_obs[lag:] - y_obs[:-lag]
+        good = (~np.isnan(del_x)) & (~np.isnan(del_y))
+        if good.any():
+            msd[lag - 1] = np.mean(del_x[good] ** 2 + del_y[good] ** 2)
+
     return msd
-
-
-
-def MSD_nan(data_dict: dict, x_name: str, y_name: str, all_time_lags: bool) -> np.ndarray:
-    """Compute the mean square displacement of the cell, handling NaN values."""
-    # Extract data
-    x = data_dict[x_name]
-    y = data_dict[y_name]
-
-    # Combine x and y, maintaining the original length with NaNs
-    data = np.column_stack([x, y])
-
-    # Calculate MSD using tidynamics, treating NaNs correctly
-    msd = []
-    for lag in range(1, len(data) if all_time_lags else 2):
-        diffs = []
-        for t in range(len(data) - lag):
-            # Ensure both points at t and t+lag are valid
-            if not (np.isnan(x[t]) or np.isnan(x[t + lag]) or np.isnan(y[t]) or np.isnan(y[t + lag])):
-                dx = data[t + lag, 0] - data[t, 0]
-                dy = data[t + lag, 1] - data[t, 1]
-                diffs.append(dx ** 2 + dy ** 2)
-        if diffs:
-            msd.append(np.mean(diffs))
-        else:
-            msd.append(np.nan)  # If no valid pairs exist for this lag
-    if len(msd) == 0:
-        msd = [0]
-    return np.array(msd)
-
-
-def MSD(data_dict: dict, x_name="x", y_name="y", all_time_lags: bool = True) -> Union[np.ndarray, float]:
-    """Compute the mean square displacement of the cell for all possible time lags."""
-    if np.isnan(data_dict[x_name]).any() or np.isnan(data_dict[y_name]).any():
-        return MSD_nan(data_dict, x_name, y_name, all_time_lags)
-    # MSD_tidy is faster but cannot handle nans
-    return MSD_tidy(data_dict, x_name, y_name, all_time_lags)
 
 
 def angle_degree(data_dict: dict) -> np.ndarray:
@@ -229,11 +243,12 @@ def compute_autocorrelation(list_statistic: list) -> list:
     return autocorr_results
 
 
-def compute_summary_stats(cell_population: np.ndarray) -> (list, list, list, list, list):
+def compute_summary_stats(cell_population: np.ndarray, dt: float = 30) -> (list, list, list, list, list):
     """
     Compute the statistics of the reduced/visible coordinates of each cell in a cell population.
 
     :param cell_population: 3D array of cell populations
+    :param dt: time interval between successive frames
     :return: list of msd, ta, v, ad
     """
     msd_list = []
@@ -249,7 +264,7 @@ def compute_summary_stats(cell_population: np.ndarray) -> (list, list, list, lis
         if all(np.isnan(sim_dict['x'])):
             continue
         else:
-            msd_list.append(compute_mean(MSD(sim_dict, all_time_lags=False)))  # mean just for formatting
+            msd_list.append(compute_mean(compute_msd(sim_dict, all_time_lags=False, dt=dt)))  # mean just for formatting
             ta_list.append(compute_mean(turning_angle(sim_dict)))
             v_list.append(compute_mean(velocity(sim_dict)))
             ad_list.append(compute_mean(angle_degree(sim_dict)))
@@ -271,16 +286,16 @@ def compute_MSD_lags(cell_population: np.ndarray) -> np.ndarray:
         if all(np.isnan(sim_dict['x'])):
             continue
         else:
-            msd_list.append(MSD(sim_dict, all_time_lags=True))
+            msd_list.append(compute_msd(sim_dict, all_time_lags=True))
     msd = np.stack(msd_list, axis=0)
-    msd[msd < 0] = 0  # algorithm can give smaller 0 values due to numerical impression
     return msd
 
 
 def reduce_to_coordinates(sumstat: dict,
                           minimal_length: int = 0,
                           maximal_length: Optional[int] = None,
-                          only_longest_traj_per_cell: bool = True) -> list[dict]:
+                          only_longest_traj_per_cell: bool = True,
+                          cut_region_of_interest: bool = True) -> list[dict]:
     """
     Reduce the output of the model to the visible coordinates of the cells.
 
@@ -288,6 +303,7 @@ def reduce_to_coordinates(sumstat: dict,
     :param minimal_length: minimal length of the trajectory
     :param maximal_length: maximal length of the trajectory
     :param only_longest_traj_per_cell: if True, only the longest trajectory of each cell is returned
+    :param cut_region_of_interest: if True, the region of interest is cut
     :return: list of dictionaries with x, y, t coordinates
     """
     sim_list = []
@@ -305,15 +321,19 @@ def reduce_to_coordinates(sumstat: dict,
             'y': sumstat["cell.center.y"][cell_data_idx][1:],
             't': sumstat["time"][cell_data_idx][1:]
         }
-        # cut the region of interest, divide cells into multiple cells if they leave the region
-        sim_dict_cut = cut_region(sim_dict,
-                                  x_min=316.5, x_max=856.5, y_min=1145, y_max=1351,
-                                  return_longest=only_longest_traj_per_cell)
-        # check if sim_dict_cut is empty
-        if sim_dict_cut is not None:
-            sim_list.extend(sim_dict_cut)
+        if cut_region_of_interest:
+            # cut the region of interest, divide cells into multiple cells if they leave the region
+            sim_dict_cut = cut_region(sim_dict,
+                                      x_min=316.5, x_max=856.5, y_min=1145, y_max=1351,
+                                      return_longest=only_longest_traj_per_cell)
+            # check if sim_dict_cut is empty
+            if sim_dict_cut is not None:
+                sim_list.extend(sim_dict_cut)
+            else:
+                continue
         else:
-            continue
+            # if no region of interest is cut, just append the cell
+            sim_list.append(sim_dict)
 
     # only keep cells of minimal length
     if minimal_length > 0:
@@ -653,6 +673,78 @@ class GroupSummaryNetwork(tf.keras.Model):
         return cls(**config)
 
 
+class EnsembleTrainer:
+    def __init__(self, trainers):
+        self.trainers = trainers
+        self.n_trainers = len(trainers)
+        self.checkpoint_path = 'amortizer-cell-migration-ensemble'
+        self.amortizer = self.EnsembleAmortizer([trainer.amortizer for trainer in trainers])
+        self.loss_history = self.EnsembleLossHistory(trainers)
+
+    def configurator(self, forward_dict: dict) -> list[dict]:
+        out_list = []
+        for trainer in self.trainers:
+            out = trainer.configurator(forward_dict)
+            out_list.append(out)
+        return out_list
+
+    class EnsembleAmortizer:
+        def __init__(self, amortizers):
+            self.amortizers = amortizers
+            self.n_amortizers = len(amortizers)
+            self.summary_loss = None
+
+        def sample(self, forward_dict: list[dict], n_samples: int) -> np.ndarray:
+            if self.n_amortizers != len(forward_dict):
+                raise ValueError(f'Number of forward_dicts ({len(forward_dict)})'
+                                 f' does not match number of amortizers ({self.n_amortizers}).')
+
+            out_list = []
+            n_samples_per_amortizer = np.ones(self.n_amortizers) * (n_samples // self.n_amortizers)
+            n_samples_per_amortizer[:n_samples % self.n_amortizers] += 1
+
+            for a_i, amortizer in enumerate(self.amortizers):
+                out = amortizer.sample(forward_dict[a_i], n_samples=n_samples_per_amortizer[a_i])
+                out_list.append(out)
+            if out_list[0].ndim == 2:
+                return np.concatenate(out_list, axis=0)
+            return np.concatenate(out_list, axis=1)
+
+        def summary_net(self, summary_conditions: np.ndarray) -> np.ndarray:
+            if self.n_amortizers != len(summary_conditions):
+                raise ValueError(f'Number of summary_conditions ({len(summary_conditions)})'
+                                 f' does not match number of amortizers ({self.n_amortizers}).')
+
+            out_list = []
+            for a_i, amortizer in enumerate(self.amortizers):
+                out = amortizer.summary_net(summary_conditions[a_i]['summary_conditions'])
+                out_list.append(out)
+            return np.concatenate(out_list, axis=1)
+
+    class EnsembleLossHistory:
+        def __init__(self, trainers):
+            self.trainers = trainers
+
+        def get_plottable(self):
+            # Collect all DataFrames for each trainer's train and validation losses
+            train_dfs = []
+            val_dfs = []
+
+            for trainer in self.trainers:
+                history = trainer.loss_history.get_plottable()
+                train_dfs.append(history['train_losses'])
+                val_dfs.append(history['val_losses'])
+
+            # Calculate the average DataFrame across trainers for both train and val losses
+            avg_train_df = pd.concat(train_dfs).groupby(level=0).mean()
+            avg_val_df = pd.concat(val_dfs).groupby(level=0).mean()
+
+            return {
+                'train_losses': avg_train_df,
+                'val_losses': avg_val_df
+            }
+
+
 def load_model(model_id: int,
                x_mean: np.ndarray, x_std: np.ndarray,
                p_mean: np.ndarray, p_std: np.ndarray,
@@ -893,7 +985,6 @@ print(obs_pars)
 #%%
 if load_synthetic_data:
     # simulate test data
-    test_params = np.array(list(obs_pars_log.values()))
     if not os.path.exists(os.path.join(gp, f'test_sim_{test_id}.npy')):
         raise FileNotFoundError('Test data not found')
     else:
@@ -906,9 +997,7 @@ else:
                                                max_sequence_length=max_sequence_length,
                                                cells_in_population=cells_in_population)
     test_sim = real_data_full[np.newaxis]
-    #test_sim = \
-    #np.array([real_data[start:start + cells_in_population] for start in range(0, len(real_data), cells_in_population)])[
-    #    0][np.newaxis]
+
 #%%
 def obj_func_wass_helper(sim: dict, obs: dict, key: str) -> float:
     x, y = np.array(sim[key]), np.array(obs[key])
@@ -930,6 +1019,7 @@ adaptive_weights = {
 adaptive_wasserstein_distance = pyabc.distance.AdaptiveAggregatedDistance(
     distances=list(distances.values()),
     initial_weights=list(adaptive_weights.values()),
+    adaptive=False,
     log_file=os.path.join(gp, f"adaptive_distance_log_{test_id}.txt")
 )
 #%%
@@ -988,16 +1078,17 @@ def make_sumstat_dict_nn(data: Union[dict, np.ndarray], use_npe_summaries: bool 
     # configures the input for the network
     config_input = trainer.configurator({"sim_data": data})
     # get the summary statistics
-    out_dict = {
-        'summary_net': trainer.amortizer.summary_net(config_input['summary_conditions']).numpy().flatten()
-    }
+    if isinstance(trainer, EnsembleTrainer):
+        out_dict = {
+            'summary_net': trainer.amortizer.summary_net(config_input).flatten()
+        }
+    else:
+        out_dict = {
+            'summary_net': trainer.amortizer.summary_net(config_input['summary_conditions']).numpy().flatten()
+        }
     if model_id == 10:
         # renormalize the parameters
         out_dict['summary_net'] = out_dict['summary_net'] * p_std + p_mean
-
-    # if direct conditions are available, concatenate them
-    if 'direct_conditions' in config_input.keys():
-        out_dict['direct_conditions'] = config_input['direct_conditions'].flatten()
 
     del trainer
     return out_dict

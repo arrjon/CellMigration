@@ -24,14 +24,13 @@
     </Space>
     <Time>
         <StartTime value="0"/>
-        <StopTime value="600000"/>
+        <StopTime value="10000"/>
         <!--    <Disabled>
         <StopTime value="5000"/>
     </Disabled>
 -->
         <TimeSymbol symbol="time"/>
         <SaveInterval value="0"/>
-        <RandomSeed value="0"/>
     </Time>
     <Analysis>
         <ModelGraph format="dot" reduced="false" include-tags="#untagged"/>
@@ -88,7 +87,7 @@
     <Global>
         <Constant symbol="tumble.run_duration" value="0"/>
         <Constant symbol="cell_nodes" name="CPM cell volume (μm^2 / 1.31^2)" value="cell_nodes_real / (nodeL*nodeL)"/>
-        <Constant symbol="cell_nodes_real" name="CPM cell volume μm^2" value="50"/>
+        <Constant symbol="cell_nodes_real" name="CPM cell volume μm^2" value="143"/>
         <Constant symbol="x0_chemokine" name="position chemokine source in um" value="x0_sim * nodeL"/>
         <Constant symbol="y0_chemokine" name="position chemokine source in μm" value="hole.diam+hole.diam/2+270"/>
         <Field symbol="dummy" value="-1"/>
@@ -111,7 +110,7 @@
     </Disabled>
 -->
         </Field>
-        <Constant symbol="num_cells" name="number of cell in simulation" value="50"/>
+        <Constant symbol="num_cells" name="number of cell in simulation" value="143"/>
         <Constant symbol="hole.diam" name="diameter of the hole in μm" value="1500"/>
         <Constant symbol="hole.diam_sim" name="diameter of the hole in simulation" value="hole.diam/nodeL"/>
     </Global>

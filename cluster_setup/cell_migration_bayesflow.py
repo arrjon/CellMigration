@@ -9,6 +9,10 @@ from fitmulticell import model as morpheus_model
 from fitmulticell.sumstat import SummaryStatistics
 from matplotlib import pyplot as plt
 
+import tensorflow as tf
+import bayesflow as bf
+from bayesflow.simulation import GenerativeModel, Prior, Simulator
+
 from load_bayesflow_model import load_model, custom_loader
 from summary_stats import reduce_to_coordinates
 from plotting_routines import plot_compare_summary_stats, plot_trajectory, plot_autocorrelation
@@ -97,11 +101,6 @@ param_names = ['$m_{\\text{dir}}$', '$m_{\\text{rand}}$', '$w$', '$a$']
 log_param_names = ['$\log_{10}(m_{\\text{dir}})$', '$\log_{10}(m_{\\text{rand}})$', '$\log_{10}(w)$', '$\log_{10}(a)$']
 print(obs_pars)
 
-# %%
-import tensorflow as tf
-import bayesflow as bf
-from bayesflow.simulation import GenerativeModel, Prior, Simulator
-
 
 def prior_fun(batch_size: int) -> np.ndarray:
     samples = []
@@ -146,7 +145,7 @@ def generate_population_data(param_batch: np.ndarray, cells_in_population: int, 
 
 presimulation_path = '../learned_summaries/presimulations'
 n_val_data = 100
-cells_in_population = 50
+cells_in_population = 143
 n_params = len(obs_pars)
 batch_size = 32
 iterations_per_epoch = 100
@@ -198,7 +197,6 @@ x_mean = np.nanmean(valid_data['sim_data'], axis=(0, 1, 2))
 x_std = np.nanstd(valid_data['sim_data'], axis=(0, 1, 2))
 p_mean = np.mean(valid_data['prior_draws'], axis=0)
 p_std = np.std(valid_data['prior_draws'], axis=0)
-print('Mean and std of data:', x_mean, x_std)
 print('Mean and std of parameters:', p_mean, p_std)
 
 if not training:

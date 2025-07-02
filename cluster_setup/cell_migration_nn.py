@@ -9,6 +9,9 @@ import pyabc
 from fitmulticell import model as morpheus_model
 from fitmulticell.sumstat import SummaryStatistics
 
+import keras
+import tensorflow as tf
+from bayesflow.simulation import GenerativeModel, Prior, Simulator
 
 from load_bayesflow_model import load_model
 from summary_stats import compute_summary_stats, reduce_to_coordinates
@@ -97,11 +100,6 @@ param_names = list(obs_pars.keys())
 log_param_names = [f'log_{p}' for p in param_names]
 print(obs_pars)
 
-# %%
-import keras
-import tensorflow as tf
-from bayesflow.simulation import GenerativeModel, Prior, Simulator
-
 
 def prior_fun(batch_size: int) -> np.ndarray:
     samples = []
@@ -146,7 +144,7 @@ def generate_population_data(param_batch: np.ndarray, cells_in_population: int, 
 
 presimulation_path = 'presimulations'
 n_val_data = 100
-cells_in_population = 50
+cells_in_population = 143
 n_params = len(obs_pars)
 batch_size = 32
 iterations_per_epoch = 100
