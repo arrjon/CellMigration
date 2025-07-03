@@ -122,7 +122,7 @@ def generate_population_data(param_batch: np.ndarray, cells_in_population: int, 
         sim = model.sample(params_dict)
         data_batch.append(sim)  # generates a cell population in one experiment
 
-    data_batch_transformed = np.ones((param_batch.shape[0], cells_in_population, max_length, 2)) * np.nan
+    data_batch_transformed = np.ones((param_batch.shape[0], cells_in_population, max_length, 3)) * np.nan
     # each cell is of different length, each with x and y coordinates, make a tensor out of it
     n_cells_not_visible = 0
     for p_id, population_sim in enumerate(data_batch):
@@ -134,6 +134,7 @@ def generate_population_data(param_batch: np.ndarray, cells_in_population: int, 
             # pre-pad the data with zeros, but first write zeros as nans to compute the mean and std
             data_batch_transformed[p_id, c_id, -len(cell_sim['x']):, 0] = cell_sim['x']
             data_batch_transformed[p_id, c_id, -len(cell_sim['y']):, 1] = cell_sim['y']
+            data_batch_transformed[p_id, c_id, -len(cell_sim['t']):, 2] = cell_sim['t']
 
     if n_cells_not_visible > 0:
         print(f'Simulation with no cells visible: {n_cells_not_visible}/{len(data_batch)}')
@@ -204,7 +205,7 @@ if not training:
     exit()
 
 
-trainer, map_idx_sim = load_model(
+trainer = load_model(
     model_id=10,  # only summary net training
     x_mean=x_mean,
     x_std=x_std,

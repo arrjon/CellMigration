@@ -74,9 +74,10 @@ def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: 
                 continue
             cell = cell[0]
         # pre-pad the data with zeros, but first write zeros as nans to compute the mean and std
-        track = np.ones((max_sequence_length + 1, 2)) * np.nan
+        track = np.ones((max_sequence_length + 1, 3)) * np.nan
         track[-len(cell['x'][:max_sequence_length]):, 0] = cell['x'][:max_sequence_length]
         track[-len(cell['y'][:max_sequence_length]):, 1] = cell['y'][:max_sequence_length]
+        track[-len(cell['t'][:max_sequence_length]):, 2] = np.round(cell['t'][:max_sequence_length])
         real_data.append(track[1:])  # remove the first time point, same as in the simulation (often nan anyway)
 
     real_data = np.stack(real_data)

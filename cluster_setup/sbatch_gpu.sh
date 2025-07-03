@@ -7,7 +7,7 @@
 #SBATCH --mem-per-cpu 64GB
 #SBATCH --gpus 1
 #SBATCH --array=0-2
-#SBATCH --depend=afterany:22392705
+#SBATCH --depend=afterany:22409370
 #SBATCH --mail-type=END
 #SBATCH --mail-user=jonas.arruda@uni-bonn.de
 

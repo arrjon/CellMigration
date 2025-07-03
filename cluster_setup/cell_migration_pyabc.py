@@ -422,9 +422,10 @@ def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: 
                 continue
             cell = cell[0]
         # pre-pad the data with zeros, but first write zeros as nans to compute the mean and std
-        track = np.ones((max_sequence_length + 1, 2)) * np.nan
+        track = np.ones((max_sequence_length + 1, 3)) * np.nan
         track[-len(cell['x'][:max_sequence_length]):, 0] = cell['x'][:max_sequence_length]
         track[-len(cell['y'][:max_sequence_length]):, 1] = cell['y'][:max_sequence_length]
+        track[-len(cell['t'][:max_sequence_length]):, 2] = np.round(cell['t'][:max_sequence_length])
         real_data.append(track[1:])  # remove the first time point, same as in the simulation (often nan anyway)
 
     real_data = np.stack(real_data)
@@ -760,23 +761,19 @@ def load_model(model_id: int,
     summary_loss = 'MMD'
     summary_net = None  # will be defined later
     if model_id == 0:
-        checkpoint_path = 'amortizer-cell-migration-attention-6'
-        map_idx_sim = 52
+        checkpoint_path = 'amortizer-cell-migration-6'
     elif model_id == 1:
-        checkpoint_path = 'amortizer-cell-migration-attention-7'
+        checkpoint_path = 'amortizer-cell-migration-7'
         num_coupling_layers = 7
-        map_idx_sim = 52
     elif model_id == 2:
-        checkpoint_path = 'amortizer-cell-migration-attention-8'
+        checkpoint_path = 'amortizer-cell-migration-8'
         num_coupling_layers = 8
-        map_idx_sim = 69
     elif model_id == 3:
-        raise('Checkpoint path not found')
+        raise 'Checkpoint path not found'
     elif model_id == 10:
         print('load only summary model without checkpoint')
         checkpoint_path = 'amortizer-only-summary'
         num_coupling_layers = 1
-        map_idx_sim = np.nan
         summary_net = SummaryNetwork(
             summary_dim=n_params,
             rnn_units=32,
@@ -842,7 +839,7 @@ def load_model(model_id: int,
             # Re-enable logging
             logging.disable(logging.NOTSET)
 
-            return trainer, map_idx_sim
+            return trainer
 
         trainer.load_pretrained_network()
         history = trainer.loss_history.get_plottable()
@@ -863,7 +860,7 @@ def load_model(model_id: int,
     # Re-enable logging
     logging.disable(logging.NOTSET)
 
-    return trainer, map_idx_sim
+    return trainer
 
 
 # get the job array id and number of processors
@@ -926,7 +923,7 @@ def prepare_sumstats(output_morpheus_model) -> dict:
                                             )
 
     # we now do exactly the same as in the BayesFlow workflow, but here we get only one sample at a time
-    data_transformed = np.ones((1, cells_in_population, max_sequence_length, 2)) * np.nan
+    data_transformed = np.ones((1, cells_in_population, max_sequence_length, 3)) * np.nan
     # each cell is of different length, each with x and y coordinates, make a tensor out of it
     n_cells_not_visible = 0
     if len(sim_coordinates) != 0:
@@ -935,6 +932,7 @@ def prepare_sumstats(output_morpheus_model) -> dict:
             # pre-pad the data with zeros, but first write zeros as nans to compute the mean and std
             data_transformed[0, c_id, -len(cell_sim['x']):, 0] = cell_sim['x']
             data_transformed[0, c_id, -len(cell_sim['y']):, 1] = cell_sim['y']
+            data_transformed[0, c_id, -len(cell_sim['t']):, 2] = cell_sim['t']
 
     return {'sim': data_transformed}
 
@@ -1067,7 +1065,7 @@ def make_sumstat_dict_nn(data: Union[dict, np.ndarray], use_npe_summaries: bool 
         key = list(data.keys())[0]
         data = data[key]
 
-    trainer, map_idx_sim = load_model(
+    trainer = load_model(
         model_id=model_id,
         x_mean=x_mean,
         x_std=x_std,

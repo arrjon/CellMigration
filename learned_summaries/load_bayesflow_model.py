@@ -329,7 +329,6 @@ class EnsembleTrainer:
             }
 
 
-
 def load_model(model_id: int,
                x_mean: np.ndarray, x_std: np.ndarray,
                p_mean: np.ndarray, p_std: np.ndarray,
@@ -345,29 +344,25 @@ def load_model(model_id: int,
     summary_loss = 'MMD'
     summary_net = None  # will be defined later
     if model_id == 0:
-        checkpoint_path = 'amortizer-cell-migration-attention-6'
-        map_idx_sim = 52
+        checkpoint_path = 'amortizer-cell-migration-6'
     elif model_id == 1:
-        checkpoint_path = 'amortizer-cell-migration-attention-7'
+        checkpoint_path = 'amortizer-cell-migration-7'
         num_coupling_layers = 7
-        map_idx_sim = 52
     elif model_id == 2:
-        checkpoint_path = 'amortizer-cell-migration-attention-8'
+        checkpoint_path = 'amortizer-cell-migration-8'
         num_coupling_layers = 8
-        map_idx_sim = 69
     elif model_id == 3:
         print('Loading ensemble model')
         model_ids = [2, 1, 0]
         trainers = []
         for m_id in model_ids:
-            trainer, _ = load_model(m_id, x_mean, x_std, p_mean, p_std, generative_model)
+            trainer = load_model(m_id, x_mean, x_std, p_mean, p_std, generative_model)
             trainers.append(trainer)
-        return EnsembleTrainer(trainers), np.nan  # no map_idx_sim for ensemble model
+        return EnsembleTrainer(trainers)
     elif model_id == 10:
         print('load only summary model without checkpoint')
         checkpoint_path = 'amortizer-only-summary'
         num_coupling_layers = 1
-        map_idx_sim = np.nan
         summary_net = SummaryNetwork(
             summary_dim=n_params,
             rnn_units=32,
@@ -433,7 +428,7 @@ def load_model(model_id: int,
             # Re-enable logging
             logging.disable(logging.NOTSET)
 
-            return trainer, map_idx_sim
+            return trainer
 
         trainer.load_pretrained_network()
         history = trainer.loss_history.get_plottable()
@@ -454,4 +449,4 @@ def load_model(model_id: int,
     # Re-enable logging
     logging.disable(logging.NOTSET)
 
-    return trainer, map_idx_sim
+    return trainer

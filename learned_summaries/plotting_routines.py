@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import seaborn as sns
+from scipy.stats import median_abs_deviation
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
@@ -62,15 +63,16 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
 
     fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=sharey, sharex=sharex,
                            figsize=(10, 3), tight_layout=True)
-    name_plots = ['Angle Degree\n', 'Mean Squared\nDisplacement', 'Turning Angle\n', 'Velocity\n', 'Waiting Time\n']
+    name_plots = ['Angle Degree', 'Squared Displacement', 'Turning Angle', 'Velocity']
+    order_stats = [1, 3, 0, 2]  # order of the statistics to plot
 
-    for i in range(marginal_distances_list[0].shape[1]):
+    for i_ax, i in enumerate(order_stats):
         for j, marginal_distances in enumerate(marginal_distances_list):
-            ax[i].hist(marginal_distances[:, i], bins=15, weights=weights, alpha=0.8, density=True,
-                       label=labels[j] if labels is not None and i == 0 else None,
+            ax[i_ax].hist(marginal_distances[:, i], bins=15, weights=weights, alpha=0.8, density=True,
+                       label=labels[j] if labels is not None and i_ax == 0 else None,
                        color=colors[j] if colors is not None else None)
-        ax[i].set_title(name_plots[i])
-        ax[i].set_xlabel('Weighted\nWasserstein Distance')
+        ax[i_ax].set_title(name_plots[i])
+        ax[i_ax].set_xlabel('Weighted\nWasserstein Distance')
     ax[0].set_ylabel('Density')
     if labels is not None:
         fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15),
@@ -83,7 +85,8 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
 
 def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, sumstats_list: list[list],
                                 labels: list[str] = None, colors: list[str] = None,
-                                sharey: bool = False, sharex: bool = False,
+                                ylog_scale: bool = False,
+                                title: str = 'Weighted\nWasserstein Distance',
                                 path: str = None):
     """
     Plot the median and standard deviation of the Wasserstein distance between the summary statistics of the
@@ -102,31 +105,33 @@ def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, s
 
         marginal_distances_list.append(marginal_distances)
 
-    fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=sharey, sharex=sharex,
+    fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=True, sharex=False,
                            figsize=(10, 3), tight_layout=True)
-    name_plots = ['Angle Degree\n', 'Mean Squared\nDisplacement', 'Turning Angle\n', 'Velocity\n', 'Waiting Time\n']
+    name_plots = ['Squared Displacement', 'Turning Angle', 'Velocity', 'Angle Degree']
+    order_stats = [0, 2, 3, 1]  # order of the statistics to plot
 
-    for i in range(marginal_distances_list[0].shape[1]):
+    for i_ax, i in enumerate(order_stats):
         for j, marginal_distances in enumerate(marginal_distances_list):
             # Compute median and standard deviation
             median = np.median(marginal_distances[:, i])
-            std_dev = np.std(marginal_distances[:, i])
+            error = median_abs_deviation(marginal_distances[:, i])
 
             # Plot median and standard deviation
-            ax[i].bar(j, median, yerr=std_dev, align='center', alpha=0.8,
-                      label=labels[j] if labels is not None and i == 0 else None,
+            ax[i_ax].bar(j, median, yerr=error, align='center', alpha=0.8,
+                      label=labels[j] if labels is not None and i_ax == 0 else None,
                       color=colors[j] if colors is not None else None, capsize=5)
 
-        ax[i].set_xlabel(name_plots[i])
+        ax[i_ax].set_xlabel(name_plots[i])
 
-    ax[0].set_ylabel('Weighted\nWasserstein Distance')
+    ax[0].set_ylabel(title)
     for a in ax:
-        a.set_yscale('log')
+        if ylog_scale:
+            a.set_yscale('log')
         a.set_xticks(np.arange(len(sumstats_list)), labels=['' for _ in range(len(sumstats_list))])
 
     if labels is not None:
         median_patch = Patch(color='grey', label='Median')
-        std_patch  = plt.plot([], [], color='black', label='Std')[0]
+        std_patch  = plt.plot([], [], color='black', label='Median Absolute Deviation')[0]
 
         fig.legend(handles=[median_patch, std_patch] + ax[0].get_legend_handles_labels()[0],
             loc='lower center', bbox_to_anchor=(0.5, -0.15),
@@ -741,7 +746,7 @@ def plot_posterior_1d(
         fig.legend(handles, labels,
                    fontsize=legend_fontsize,
                    loc='center right',
-                   bbox_to_anchor=(1.35, 0.5))
+                   bbox_to_anchor=(1.4, 0.5))
 
     plt.tight_layout(rect=(0, 0, 0.95, 1))
     return fig

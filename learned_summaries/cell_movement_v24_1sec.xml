@@ -24,7 +24,7 @@
     </Space>
     <Time>
         <StartTime value="0"/>
-        <StopTime value="10000"/>
+        <StopTime value="60000"/>
         <!--    <Disabled>
         <StopTime value="5000"/>
     </Disabled>
