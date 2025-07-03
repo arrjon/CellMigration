@@ -237,7 +237,7 @@ def load_all_pickles(directory):
 training_data = load_all_pickles(presimulation_path)
 
 # make tensor out of the data
-config_x = np.zeros((len(training_data)*batch_size, cells_in_population, max_sequence_length, 3))
+config_x = np.zeros((len(training_data)*batch_size, cells_in_population, max_sequence_length, 4))
 y = np.zeros((len(training_data)*batch_size, n_params))
 for i, (_, data) in enumerate(training_data):
     data_dict = trainer.configurator(data[0])
