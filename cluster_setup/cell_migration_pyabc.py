@@ -895,7 +895,7 @@ model_path = gp + "/cell_movement_v24.xml"  # time step is 30sec, move.dir compl
 max_sequence_length = 120
 min_sequence_length = 0
 only_longest_traj_per_cell = True  # mainly to keep the data batchable
-cells_in_population = 50
+cells_in_population = 143
 
 
 def make_sumstat_dict(data: Union[dict, np.ndarray]) -> dict:
@@ -1009,17 +1009,49 @@ distances = {
     'ta': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='ta')),
     'vel': pyabc.distance.FunctionDistance(partial(obj_func_wass_helper, key='vel')),
 }
-adaptive_weights = {
-    d: 1. / max(np.max(make_sumstat_dict(test_sim)[d]), 1e-4) for d in distances.keys()
-}
 
 # adaptive distance
+if load_synthetic_data:
+    log_file_weights = os.path.join(gp, f"adaptive_distance_log_{test_id}.txt")
+else:
+    log_file_weights = os.path.join(gp, "adaptive_distance_log_real.txt")
+def span(samples: np.ndarray) -> np.ndarray:
+    """Compute the difference of largest and smallest sample point.
+
+    Handles inf and nan values robustly:
+    - Returns NaN if all finite values are NaN
+    - Ignores both NaN and infinite values when computing min/max
+    """
+    # Handle empty arrays
+    if samples.size == 0:
+        return np.array([])
+
+    # Create mask for finite values (not NaN and not inf)
+    finite_mask = np.isfinite(samples)
+
+    # Check if there are any finite values along each axis
+    has_finite = np.any(finite_mask, axis=0)
+
+    # For computation, set non-finite values to NaN so they're ignored
+    samples_clean = np.where(finite_mask, samples, np.nan)
+
+    # Compute min and max ignoring NaN values (which now includes original infs)
+    min_vals = np.nanmin(samples_clean, axis=0)
+    max_vals = np.nanmax(samples_clean, axis=0)
+
+    # Compute span
+    result = max_vals - min_vals
+
+    # If no finite values exist along an axis, return NaN
+    result = np.where(has_finite, result, np.nan)
+    return result
+
 adaptive_wasserstein_distance = pyabc.distance.AdaptiveAggregatedDistance(
     distances=list(distances.values()),
-    initial_weights=list(adaptive_weights.values()),
-    adaptive=False,
-    log_file=os.path.join(gp, f"adaptive_distance_log_{test_id}.txt")
+    scale_function=span,
+    log_file=log_file_weights
 )
+
 #%%
 if run_manual_sumstats:
     redis_sampler = RedisEvalParallelSampler(host=args.ip, port=args.port,
@@ -1033,6 +1065,7 @@ if run_manual_sumstats:
                        sampler=redis_sampler)
 
     db_path = os.path.join(gp, f"{'synthetic_'+str(test_id) if load_synthetic_data else 'real'}_test_wasserstein_sumstats_adaptive.db")
+    if os.path.exists(db_path): os.remove(db_path)
     history = abc.new("sqlite:///" + db_path, make_sumstat_dict(test_sim))
 
     #start the abc fitting
@@ -1057,7 +1090,7 @@ print('Mean and std of parameters:', p_mean, p_std)
 # use trained neural net as summary statistics
 def make_sumstat_dict_nn(data: Union[dict, np.ndarray], use_npe_summaries: bool = True) -> dict:
     if use_npe_summaries:
-        model_id = 2
+        model_id = 0
     else:
         model_id = 10
     if isinstance(data, dict):
@@ -1126,6 +1159,7 @@ else:
     db_path = os.path.join(gp,
                            f"{'synthetic_' + str(test_id) if load_synthetic_data else 'real'}_test_nn_sumstats_posterior_mean.db")
 print(db_path)
+if os.path.exists(db_path): os.remove(db_path)
 history = abc_nn.new("sqlite:///" + db_path, obs_nn)
 
 #start the abc fitting

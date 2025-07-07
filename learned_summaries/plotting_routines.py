@@ -39,7 +39,7 @@ def plot_violin(ax, data, label, ylabel, alpha=0.05):
         ax.set_title(f'{label}\n')
 
 
-def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, sumstats_list: list[list],
+def plot_sumstats_distance_hist(obj_func_comparison: callable, test_sim_dict: dict, sumstats_list: list[list],
                                 weights: list = None,
                                 labels: list[str] = None, colors: list[str] = None,
                                 sharey: bool = False, sharex: bool = False,
@@ -57,14 +57,14 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
         # compute the distance for each hand-crafted summary statistics
         marginal_distances = np.zeros((len(sumstats), len(test_sim_dict.keys())))
         for i, st in enumerate(sumstats):
-            marginal_distances[i] = obj_func_wass(test_sim_dict, st, return_marginal=True)
+            marginal_distances[i] = obj_func_comparison(test_sim_dict, st, return_marginal=True)
 
         marginal_distances_list.append(marginal_distances)
 
     fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=sharey, sharex=sharex,
                            figsize=(10, 3), tight_layout=True)
-    name_plots = ['Angle Degree', 'Squared Displacement', 'Turning Angle', 'Velocity']
-    order_stats = [1, 3, 0, 2]  # order of the statistics to plot
+    name_plots = ['Squared Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
+    order_stats = [0, 2, 3, 1, 4]  # order of the statistics to plot
 
     for i_ax, i in enumerate(order_stats):
         for j, marginal_distances in enumerate(marginal_distances_list):
@@ -74,6 +74,7 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
         ax[i_ax].set_title(name_plots[i])
         ax[i_ax].set_xlabel('Weighted\nWasserstein Distance')
     ax[0].set_ylabel('Density')
+    ax[-1].set_ylabel('Euclidean Distance')
     if labels is not None:
         fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15),
                    ncol=len(labels) // 2 if len(labels) > 3 else len(labels))
@@ -83,11 +84,11 @@ def plot_sumstats_distance_hist(obj_func_wass: callable, test_sim_dict: dict, su
     return
 
 
-def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, sumstats_list: list[list],
-                                labels: list[str] = None, colors: list[str] = None,
-                                ylog_scale: bool = False,
-                                title: str = 'Weighted\nWasserstein Distance',
-                                path: str = None):
+def plot_sumstats_distance_stats(obj_func_comparison: callable, test_sim_dict: dict, sumstats_list: list[list],
+                                 labels: list[str] = None, colors: list[str] = None,
+                                 ylog_scale: bool = False,
+                                 title: str = 'Weighted\nWasserstein Distance',
+                                 path: str = None):
     """
     Plot the median and standard deviation of the Wasserstein distance between the summary statistics of the
     test simulation and the simulations.
@@ -101,14 +102,13 @@ def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, s
         # compute the distance for each hand-crafted summary statistics
         marginal_distances = np.zeros((len(sumstats), len(test_sim_dict.keys())))
         for i, st in enumerate(sumstats):
-            marginal_distances[i] = obj_func_wass(test_sim_dict, st, return_marginal=True)
-
+            marginal_distances[i] = obj_func_comparison(test_sim_dict, st, return_marginal=True)
         marginal_distances_list.append(marginal_distances)
 
     fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=True, sharex=False,
-                           figsize=(10, 3), tight_layout=True)
-    name_plots = ['Squared Displacement', 'Turning Angle', 'Velocity', 'Angle Degree']
-    order_stats = [0, 2, 3, 1]  # order of the statistics to plot
+                           figsize=(10, 2), tight_layout=True)
+    name_plots = ['Squared Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
+    order_stats = [0, 2, 3, 1, 4]  # order of the statistics to plot
 
     for i_ax, i in enumerate(order_stats):
         for j, marginal_distances in enumerate(marginal_distances_list):
@@ -124,6 +124,7 @@ def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, s
         ax[i_ax].set_xlabel(name_plots[i])
 
     ax[0].set_ylabel(title)
+    ax[-1].set_ylabel('L1 Distance')
     for a in ax:
         if ylog_scale:
             a.set_yscale('log')
@@ -134,7 +135,7 @@ def plot_sumstats_distance_stats(obj_func_wass: callable, test_sim_dict: dict, s
         std_patch  = plt.plot([], [], color='black', label='Median Absolute Deviation')[0]
 
         fig.legend(handles=[median_patch, std_patch] + ax[0].get_legend_handles_labels()[0],
-            loc='lower center', bbox_to_anchor=(0.5, -0.15),
+            loc='lower center', bbox_to_anchor=(0.5, -0.21),
                    ncol=len(labels) // 2 + 1 if len(labels) > 3 else len(labels))
     if path is not None:
         plt.savefig(path, bbox_inches='tight')
@@ -595,7 +596,7 @@ def plot_posterior_2d(
         if reference_params is not None:
             handles.append(Line2D(xdata=[], ydata=[], color="black", linestyle="--"))
             labels.append("Summary Network")
-        g.fig.legend(handles, labels, fontsize=legend_fontsize, loc="upper right")
+        g.fig.legend(handles, labels, fontsize=legend_fontsize, loc="lower center", bbox_to_anchor=(0.5, -0.05))
 
     # Remove upper axis
     for i, j in zip(*np.triu_indices_from(g.axes, 1)):
@@ -621,132 +622,104 @@ def plot_posterior_2d(
 
 
 def plot_posterior_1d(
-    posterior_draws,
-    prior=None,
-    prior_draws=None,
-    param_names=None,
-    true_params=None,
-    reference_params=None,
-    height=2,
-    label_fontsize=16,
-    legend_fontsize=18,
-    tick_fontsize=14,
-    bins="auto",
-    post_color="#8f2727",
-    prior_color="gray",
-    post_alpha=0.9,
-    prior_alpha=0.7,
+    posterior_samples,
+    prior_draws,
+    log_param_names,
+    test_sim, test_params,
+    labels_colors,
+    make_sumstat_dict_nn,
+    height=1.5,
+    save_path=None,
 ):
     """
     Generates horizontal 1D marginal density and histogram plots for each parameter from posterior draws,
     with optional prior, true, and reference parameters, and places the legend to the right.
-
-    Parameters
-    ----------
-    posterior_draws : np.ndarray, shape (n_post_draws, n_params)
-        Posterior draws for a single dataset.
-    prior : callable or None
-        Prior object to generate draws if prior_draws is not provided.
-    prior_draws : np.ndarray or None
-        Array of prior draws, shape (n_prior_draws, n_params).
-    param_names : list of str or None
-        Names for parameters; inferred if None.
-    true_params : array-like or None
-        True parameter values, length n_params.
-    reference_params : array-like or None
-        Reference parameter values, length n_params.
-    height : float
-        Height of each subplot in inches.
-    label_fontsize, legend_fontsize, tick_fontsize : int
-        Font sizes for labels, legend, and ticks.
-    bins : int or 'auto' or None
-        Number of bins for histograms; passed to seaborn.
-    post_color, prior_color : str
-        Colors for posterior and prior plots.
-    post_alpha, prior_alpha : float
-        Opacity for posterior and prior plots.
-
-    Returns
-    -------
-    fig : matplotlib.figure.Figure
-        The figure containing the 1D horizontal plots.
     """
-    # Check input shape
-    assert posterior_draws.ndim == 2, "`posterior_draws` must be 2D array"
-    n_draws, n_params = posterior_draws.shape
 
-    # Generate prior_draws if needed
-    if prior is not None and prior_draws is None:
-        draws = prior(n_draws)
-        prior_draws = draws.get("prior_draws", draws) if isinstance(draws, dict) else draws
-
-    # Infer parameter names
-    if param_names is None:
-        if hasattr(prior, "param_names") and prior.param_names is not None:
-            param_names = prior.param_names
+    # -- your existing helper to get reference_params for abc_mean, etc. --
+    def get_reference(name, test_sim):
+        if name == 'abc_mean':
+            return make_sumstat_dict_nn(test_sim, use_npe_summaries=False)['summary_net']
         else:
-            param_names = [f"$\theta_{{{i}}}$" for i in range(1, n_params + 1)]
+            return None
 
-    # Create DataFrames
-    post_df = pd.DataFrame(posterior_draws, columns=param_names)
-    prior_df = pd.DataFrame(prior_draws, columns=param_names) if prior_draws is not None else None
+    # collect all names with non-None samples
+    plot_items = [(name, ps) for name, ps in posterior_samples.items() if ps is not None]
+    n_rows = len(plot_items)
+    # assume all ps have same number of params
+    n_params = plot_items[0][1].shape[1]
 
-    # Setup figure and axes: horizontal layout
-    fig, axes = plt.subplots(1, n_params,
-                             figsize=(height * n_params, height),
-                             squeeze=False)
-    axes = axes.flatten()
+    # plotting grid
+    fig, axes = plt.subplots(
+        n_rows, n_params,
+        figsize=(10, height * n_rows),
+        sharex='col',
+        sharey=True,  # 'col'
+    )
 
-    # Plot each parameter
-    for i, name in enumerate(param_names):
-        ax = axes[i]
-        # Posterior
-        sns.histplot(
-            post_df[name], ax=ax,
-            bins=bins, kde=True,
-            color=post_color, alpha=post_alpha, fill=True
-        )
-        # Prior if available
-        if prior_df is not None:
+    handles = []
+    for i, (name, ps) in enumerate(plot_items):
+        reference_params = get_reference(name, test_sim)
+        post_df = pd.DataFrame(ps, columns=log_param_names)
+        prior_df = pd.DataFrame(prior_draws, columns=log_param_names)
+
+        for j, pname in enumerate(log_param_names):
+            ax = axes[i, j]
+
+            # posterior
             sns.histplot(
-                prior_df[name], ax=ax,
-                bins=bins, kde=True,
-                color=prior_color, alpha=prior_alpha, fill=True,
-                zorder=-1
+                post_df[pname], ax=ax,
+                bins=20, kde=True,
+                color=labels_colors[name][1], alpha=1, fill=True
             )
-        # True parameter line
-        if true_params is not None:
-            ax.axvline(true_params[i], color="red", linestyle="--")
-        # Reference parameter line
-        if reference_params is not None:
-            ax.axvline(reference_params[i], color="black", linestyle="--")
-        # Labels and ticks
-        ax.set_xlabel(name, fontsize=label_fontsize)
-        ax.set_yticklabels([])
-        ax.tick_params(axis="x", labelsize=tick_fontsize)
-        ax.grid(alpha=0.5)
-        if i == 0:
-            ax.set_ylabel("Density", fontsize=label_fontsize)
-        else:
-            ax.set_ylabel("")
 
-    # Legend to the right
-    if prior_draws is not None or prior is not None:
+            # prior
+            sns.histplot(
+                prior_df[pname], ax=ax,
+                bins=20, kde=True,
+                color="gray", alpha=0.7, fill=True, zorder=-1
+            )
+
+            # true & reference lines
+            if test_params is not None:
+                ax.axvline(test_params[j], color="red", linestyle="--")
+            if reference_params is not None:
+                ax.axvline(reference_params[j], color="black", linestyle="--")
+
+            # styling
+            ax.set_xlabel(pname, fontsize=14)
+            if j == 0:
+                ax.set_ylabel("Density", fontsize=14)
+            else:
+                ax.set_ylabel("")
+            ax.tick_params(axis="x", labelsize=14)
+            ax.grid(alpha=0.5)
+            ax.set_xlim(prior_df[pname].values.min(), prior_df[pname].values.max())
+
+        handles.append(
+            Line2D([], [], color=labels_colors[name][1], lw=3, alpha=1)
+        )
+
+    # shared legend below all rows
+    if test_params is not None:
         handles = [
-            Line2D([], [], color=post_color, lw=3, alpha=post_alpha),
-            Line2D([], [], color=prior_color, lw=3, alpha=prior_alpha)
-        ]
-        labels = ["Posterior", "Prior"]
-        if true_params is not None:
-            handles.append(Line2D([], [], color="red", linestyle="--"))
-            labels.append("True Parameter")
-        if reference_params is not None:
-            handles.append(Line2D([], [], color="black", linestyle="--"))
-            labels.append("Mean-NN Prediction")
-        fig.legend(handles, labels,
-                   fontsize=legend_fontsize,
-                   loc='center right',
-                   bbox_to_anchor=(1.4, 0.5))
+                      Line2D([], [], color="red", linestyle="--"),
+                      Line2D([], [], color="black", linestyle="--"),
+                      Line2D([], [], color="gray", lw=3, alpha=0.7),
+                  ] + handles
+        labels = ["True Parameter", "Mean-NN Prediction", "Prior",
+                  "ABC Posterior", "ABC-NN-Mean Posterior", "ABC-NPE Posterior", "NPE Posterior",
+                  ]
+        fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=14,
+                   bbox_to_anchor=(0.5, -0.07), ncols=4)
+    else:
+        handles = [Line2D([], [], color="gray", lw=3, alpha=0.7)] + handles
+        labels = ["Prior", "ABC Posterior", "ABC-NPE Posterior", "NPE Posterior", "NPE-Ensemble Posterior"]
+        fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=14,
+                   bbox_to_anchor=(0.5, -0.07), ncols=3)
 
-    plt.tight_layout(rect=(0, 0, 0.95, 1))
+    plt.tight_layout(rect=(0, 0.03, 1, 0.95))
+    if save_path is not None:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
     return fig

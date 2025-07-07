@@ -327,3 +327,47 @@ def remove_nan(stat_list: list):
     """
     cleaned = [x for x in stat_list if not np.isnan(x) and not np.isinf(x)]
     return cleaned
+
+
+def span(samples: np.ndarray) -> np.ndarray:
+    """Compute the difference of largest and smallest sample point.
+
+    Handles inf and nan values robustly:
+    - Returns NaN if all finite values are NaN
+    - Ignores both NaN and infinite values when computing min/max
+    """
+    # Handle empty arrays
+    if samples.size == 0:
+        return np.array([])
+
+    # Create mask for finite values (not NaN and not inf)
+    finite_mask = np.isfinite(samples)
+
+    # Check if there are any finite values along each axis
+    has_finite = np.any(finite_mask, axis=0)
+
+    # For computation, set non-finite values to NaN so they're ignored
+    samples_clean = np.where(finite_mask, samples, np.nan)
+
+    # Compute min and max ignoring NaN values (which now includes original infs)
+    min_vals = np.nanmin(samples_clean, axis=0)
+    max_vals = np.nanmax(samples_clean, axis=0)
+
+    # Compute span
+    result = max_vals - min_vals
+
+    # If no finite values exist along an axis, return NaN
+    result = np.where(has_finite, result, np.nan)
+    return result
+
+
+def euclidean_distance(s0, s, p=1, weights=None):
+    if weights is None:
+        weights = np.ones_like(s0)
+    # component-wise distances
+    e_dist = np.abs(weights * (s - s0))
+
+    # maximum or p-norm distance
+    if p == np.inf:
+        return e_dist.max()
+    return (e_dist**p).sum() ** (1 / p)
