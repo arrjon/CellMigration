@@ -63,7 +63,7 @@ def plot_sumstats_distance_hist(obj_func_comparison: callable, test_sim_dict: di
 
     fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=sharey, sharex=sharex,
                            figsize=(10, 3), tight_layout=True)
-    name_plots = ['Squared Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
+    name_plots = ['Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
     order_stats = [0, 2, 3, 1, 4]  # order of the statistics to plot
 
     for i_ax, i in enumerate(order_stats):
@@ -84,7 +84,76 @@ def plot_sumstats_distance_hist(obj_func_comparison: callable, test_sim_dict: di
     return
 
 
-def plot_sumstats_distance_stats(obj_func_comparison: callable, test_sim_dict: dict, sumstats_list: list[list],
+def plot_sumstats_distance_stats(obj_func_comparison: callable,
+                                 test_sim_dict: dict,
+                                 sumstats_list: list[list],
+                                 labels: list[str] = None,
+                                 colors: list[str] = None,
+                                 ylog_scale: bool = False,
+                                 title: str = 'Weighted\nWasserstein Distance',
+                                 path: str = None):
+    """
+    Plot boxplots of the distance between each simulation method and the test simulation,
+    separately for each summary‐stat category.
+    """
+    # 1) compute marginal distances for each summary‐stat group
+    marginal_distances_list = []
+    for sumstats in sumstats_list:
+        # shape = (n_methods, n_sim, n_stats_in_group)
+        md = np.zeros((len(sumstats), len(test_sim_dict)))
+        for i, st in enumerate(sumstats):
+            md[i, :] = obj_func_comparison(test_sim_dict, st, return_marginal=True)
+        marginal_distances_list.append(md)
+    marginal_distances_list = np.array(marginal_distances_list)
+
+    n_stats = len(test_sim_dict)
+    n_methods  = len(sumstats_list)
+    name_plots = ['Displacement', 'Turning Angle', 'Velocity', 'Angle Degree',
+                  'Neural Net Summary', 'UMAP']
+    order     = [0, 2, 3, 1, 4, 5]  # reorder
+
+    # 2) make one subplot per summary‐stat category
+    fig, axes = plt.subplots(1, n_stats, figsize=(10, 2), layout="constrained")
+    if n_stats == 1:
+        axes = [axes]
+
+    for ax, grp_idx in zip(axes, order):
+        data = marginal_distances_list[:, :, grp_idx]   # (n_methods, n_sim, n_stats)
+        # boxplot: one array per method
+        b = ax.boxplot(data.T, patch_artist=True)
+
+        # color each box
+        for patch, col in zip(b['boxes'], colors):
+            patch.set_facecolor(col)
+            #patch.set_alpha(0.8)
+
+        ax.set_xlabel(name_plots[grp_idx])
+        ax.set_xticks(np.arange(1, n_methods+1))
+        ax.set_xticklabels([], rotation=45, ha='right')
+        if ylog_scale and not grp_idx == 5:
+            ax.set_yscale('log')
+        if grp_idx < 4:
+            ax.set_ylim(0.0005, 20)
+            if grp_idx != 0:
+                ax.set_yticks([])
+        if grp_idx == 4:
+            ax.set_ylim(0.1, 10)
+
+    axes[0].set_ylabel(title)
+    axes[-2].set_ylabel("L1 Distance")
+    axes[-1].set_ylabel("Cosine Similarity")
+
+    # 3) shared legend
+    handles = [Patch(facecolor=c, label=l) for c, l in zip(colors, labels)]
+    fig.legend(handles=handles, loc='lower center', ncol=2, bbox_to_anchor=(0.5, -0.3))
+
+    # 4) save & show
+    if path:
+        plt.savefig(path, bbox_inches='tight')
+    plt.show()
+
+
+def plot_sumstats_distance_stats_bar(obj_func_comparison: callable, test_sim_dict: dict, sumstats_list: list[list],
                                  labels: list[str] = None, colors: list[str] = None,
                                  ylog_scale: bool = False,
                                  title: str = 'Weighted\nWasserstein Distance',
@@ -106,8 +175,8 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable, test_sim_dict: d
         marginal_distances_list.append(marginal_distances)
 
     fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=True, sharex=False,
-                           figsize=(10, 2), tight_layout=True)
-    name_plots = ['Squared Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
+                           figsize=(10, 2), layout="constrained")
+    name_plots = ['Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
     order_stats = [0, 2, 3, 1, 4]  # order of the statistics to plot
 
     for i_ax, i in enumerate(order_stats):
@@ -596,7 +665,7 @@ def plot_posterior_2d(
         if reference_params is not None:
             handles.append(Line2D(xdata=[], ydata=[], color="black", linestyle="--"))
             labels.append("Summary Network")
-        g.fig.legend(handles, labels, fontsize=legend_fontsize, loc="lower center", bbox_to_anchor=(0.5, -0.05))
+        g.fig.legend(handles, labels, fontsize=legend_fontsize, loc="lower center", bbox_to_anchor=(0.5, -0.1))
 
     # Remove upper axis
     for i, j in zip(*np.triu_indices_from(g.axes, 1)):

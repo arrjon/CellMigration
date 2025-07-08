@@ -57,7 +57,7 @@ def load_real_data(data_id: int, max_sequence_length: int, cells_in_population: 
     # data is tilted
     real_data_scaled_df['x'] = real_data_scaled_df['x'] + (window_y2 - real_data_scaled_df['y']) * y_lin_shift
     # time
-    real_data_scaled_df['t'] = real_data_scaled_df['POSITION_T']
+    real_data_scaled_df['t'] = real_data_scaled_df['POSITION_T'] + 500  # shift time to start at 500
 
     real_data = []
     cut_region_real_data = True

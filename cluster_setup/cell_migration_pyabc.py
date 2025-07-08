@@ -135,7 +135,7 @@ def compute_msd(
         dy = y_obs[-1] - y_obs[0]
         msd_end = dx * dx + dy * dy
         total_time = max_lag * dt
-        return msd_end / np.sqrt(total_time)
+        return np.sqrt(msd_end) / np.sqrt(total_time)
 
     # full MSD curve
     msd = np.full(max_lag, np.nan, dtype=float)
@@ -1049,6 +1049,7 @@ def span(samples: np.ndarray) -> np.ndarray:
 adaptive_wasserstein_distance = pyabc.distance.AdaptiveAggregatedDistance(
     distances=list(distances.values()),
     scale_function=span,
+    adaptive=False,  # only pre-calibration
     log_file=log_file_weights
 )
 

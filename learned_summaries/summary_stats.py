@@ -110,7 +110,8 @@ def compute_msd(
         dy = y_obs[-1] - y_obs[0]
         msd_end = dx * dx + dy * dy
         total_time = max_lag * dt
-        return msd_end / np.sqrt(total_time)
+        # expected translation distance after n steps, should be of the order of sqrt(n)
+        return np.sqrt(msd_end) / np.sqrt(total_time)
 
     # full MSD curve
     msd = np.full(max_lag, np.nan, dtype=float)
