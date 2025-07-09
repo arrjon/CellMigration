@@ -125,7 +125,6 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
         # color each box
         for patch, col in zip(b['boxes'], colors):
             patch.set_facecolor(col)
-            #patch.set_alpha(0.8)
 
         ax.set_xlabel(name_plots[grp_idx])
         ax.set_xticks(np.arange(1, n_methods+1))
@@ -133,15 +132,18 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
         if ylog_scale and not grp_idx == 5:
             ax.set_yscale('log')
         if grp_idx < 4:
-            ax.set_ylim(0.0005, 20)
+            ax.set_ylim(0.0001, 20)
             if grp_idx != 0:
                 ax.set_yticks([])
         if grp_idx == 4:
             ax.set_ylim(0.1, 10)
 
-    axes[0].set_ylabel(title)
-    axes[-2].set_ylabel("L1 Distance")
-    axes[-1].set_ylabel("Cosine Similarity")
+    axes[0].set_ylabel(title, fontsize=12)
+    axes[-2].set_ylabel("L1 Distance", fontsize=12)
+    axes[-1].set_ylabel("Cosine Similarity", fontsize=12)
+    for a in axes:
+        a.tick_params(axis="x", labelsize=12)
+        a.tick_params(axis="y", labelsize=12)
 
     # 3) shared legend
     handles = [Patch(facecolor=c, label=l) for c, l in zip(colors, labels)]
@@ -442,7 +444,7 @@ def sampling_parameter_cis(
 
     # set axes and figure
     if ax is None:
-        _, ax = plt.subplots(figsize=size, tight_layout=True)
+        _, ax = plt.subplots(figsize=size, layout='constrained')
 
     # loop over parameters
     for npar in range(n_pars):
@@ -539,7 +541,7 @@ def plot_posterior_2d(
     height=2,
     label_fontsize=16,
     legend_fontsize=18,
-    tick_fontsize=14,
+    tick_fontsize=12,
     bins="auto",
     post_color="#8f2727",
     prior_color="gray",
@@ -562,7 +564,7 @@ def plot_posterior_2d(
     reference_params: np.ndarray of shape (n_params,) or None, optional, default: None
     height            : float, optional, default: 3
         The height of the pairplot
-    label_fontsize    : int, optional, default: 14
+    label_fontsize    : int, optional, default: 12
         The font size of the x and y-label texts (parameter names)
     legend_fontsize   : int, optional, default: 16
         The font size of the legend text
@@ -697,7 +699,7 @@ def plot_posterior_1d(
     test_sim, test_params,
     labels_colors,
     make_sumstat_dict_nn,
-    height=1.5,
+    height=1.,
     save_path=None,
 ):
     """
@@ -724,6 +726,7 @@ def plot_posterior_1d(
         figsize=(10, height * n_rows),
         sharex='col',
         sharey=True,  # 'col'
+        layout='constrained'
     )
 
     handles = []
@@ -756,12 +759,13 @@ def plot_posterior_1d(
                 ax.axvline(reference_params[j], color="black", linestyle="--")
 
             # styling
-            ax.set_xlabel(pname, fontsize=14)
+            ax.set_xlabel(pname, fontsize=12)
             if j == 0:
-                ax.set_ylabel("Density", fontsize=14)
+                ax.set_ylabel("Density", fontsize=12)
             else:
                 ax.set_ylabel("")
-            ax.tick_params(axis="x", labelsize=14)
+            ax.tick_params(axis="x", labelsize=12)
+            ax.tick_params(axis="y", labelsize=12)
             ax.grid(alpha=0.5)
             ax.set_xlim(prior_df[pname].values.min(), prior_df[pname].values.max())
 
@@ -780,14 +784,13 @@ def plot_posterior_1d(
                   "ABC Posterior", "ABC-NN-Mean Posterior", "ABC-NPE Posterior", "NPE Posterior",
                   ]
         fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=14,
-                   bbox_to_anchor=(0.5, -0.07), ncols=4)
+                   bbox_to_anchor=(0.5, -0.18), ncols=4)
     else:
         handles = [Line2D([], [], color="gray", lw=3, alpha=0.7)] + handles
         labels = ["Prior", "ABC Posterior", "ABC-NPE Posterior", "NPE Posterior", "NPE-Ensemble Posterior"]
         fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=14,
-                   bbox_to_anchor=(0.5, -0.07), ncols=3)
+                   bbox_to_anchor=(0.5, -0.18), ncols=3)
 
-    plt.tight_layout(rect=(0, 0.03, 1, 0.95))
     if save_path is not None:
         plt.savefig(save_path, bbox_inches='tight')
     plt.show()

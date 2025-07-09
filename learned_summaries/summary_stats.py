@@ -372,3 +372,20 @@ def euclidean_distance(s0, s, p=1, weights=None):
     if p == np.inf:
         return e_dist.max()
     return (e_dist**p).sum() ** (1 / p)
+
+
+def compute_rmse(true_params, ps, normalize=True):
+    """Compute the root mean square error (RMSE) between true parameters and predicted samples for each data set, then median over
+    posterior samples."""
+    if true_params.ndim == 1:
+        true_params = true_params[:, np.newaxis, np.newaxis]
+    elif true_params.ndim == 2:
+        true_params = true_params[:, np.newaxis]
+    if ps.ndim != 3:
+        raise ValueError("ps must be a 3D array with shape (n_data, n_samples, n_params)")
+    if ps.shape[-1] != true_params.shape[-1]:
+        raise ValueError("Last dimension of ps must match the number of parameters in true_params")
+    rmse = np.sqrt(np.mean((true_params - ps) ** 2, axis=0))
+    if normalize:
+        rmse = rmse / (true_params.max(axis=0) - true_params.min(axis=0))
+    return np.median(rmse, axis=0)  # return median RMSE across posterior samples for each parameter
