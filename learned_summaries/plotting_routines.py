@@ -2,86 +2,12 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
 import seaborn as sns
-from scipy.stats import median_abs_deviation
+
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
 
 from summary_stats import compute_summary_stats, compute_autocorrelation
-
-
-def plot_violin(ax, data, label, ylabel, alpha=0.05):
-    colors = ['#1f77b4', '#ff7f0e']  # Blue for non-significant, orange for significant
-    n_sim_plots = len(data) - 2
-
-    plot = ax.violinplot(data, showmedians=True, showextrema=False)
-    p_values = []
-    for i, pc in enumerate(plot['bodies'][1:], start=1):
-        if data[i][0] == 0 and data[i][1] == 0:
-            # just a dummy value
-            p_values.append(0)
-            color = colors[1]
-        else:
-            a_test = stats.anderson_ksamp((data[0], data[i]), method=stats.PermutationMethod())
-            p_values.append(a_test.pvalue)
-            color = colors[1] if a_test.pvalue < alpha else colors[0]
-        pc.set_facecolor(color)
-        pc.set_edgecolor('black')
-        pc.set_alpha(0.8)
-
-    ax.set_xticks(np.arange(n_sim_plots + 2) + 1, ['Data', 'Median-Simulation'] + ['Simulation'] * n_sim_plots,
-                  rotation=90)
-    ax.set_ylabel(ylabel)
-    if np.sum(np.array(p_values) < alpha) > (len(data) - 1) // 2:
-        ax.set_title(f'{label}\n(Statistically Different)')
-    else:
-        ax.set_title(f'{label}\n')
-
-
-def plot_sumstats_distance_hist(obj_func_comparison: callable, test_sim_dict: dict, sumstats_list: list[list],
-                                weights: list = None,
-                                labels: list[str] = None, colors: list[str] = None,
-                                sharey: bool = False, sharex: bool = False,
-                                path: str = None):
-    """
-    Plot the distribution of the wasserstein distance between the summary statistics of the test simulation and the
-    simulations.
-    """
-    if labels is not None:
-        if len(labels) != len(sumstats_list):
-            raise ValueError("The number of labels should be equal to the number of summary statistics lists")
-
-    marginal_distances_list = []
-    for sumstats in sumstats_list:
-        # compute the distance for each hand-crafted summary statistics
-        marginal_distances = np.zeros((len(sumstats), len(test_sim_dict.keys())))
-        for i, st in enumerate(sumstats):
-            marginal_distances[i] = obj_func_comparison(test_sim_dict, st, return_marginal=True)
-
-        marginal_distances_list.append(marginal_distances)
-
-    fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=sharey, sharex=sharex,
-                           figsize=(10, 3), tight_layout=True)
-    name_plots = ['Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
-    order_stats = [0, 2, 3, 1, 4]  # order of the statistics to plot
-
-    for i_ax, i in enumerate(order_stats):
-        for j, marginal_distances in enumerate(marginal_distances_list):
-            ax[i_ax].hist(marginal_distances[:, i], bins=15, weights=weights, alpha=0.8, density=True,
-                       label=labels[j] if labels is not None and i_ax == 0 else None,
-                       color=colors[j] if colors is not None else None)
-        ax[i_ax].set_title(name_plots[i])
-        ax[i_ax].set_xlabel('Weighted\nWasserstein Distance')
-    ax[0].set_ylabel('Density')
-    ax[-1].set_ylabel('Euclidean Distance')
-    if labels is not None:
-        fig.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15),
-                   ncol=len(labels) // 2 if len(labels) > 3 else len(labels))
-    if path is not None:
-        plt.savefig(path, bbox_inches='tight')
-    plt.show()
-    return
 
 
 def plot_sumstats_distance_stats(obj_func_comparison: callable,
@@ -108,8 +34,7 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
 
     n_stats = len(test_sim_dict)
     n_methods  = len(sumstats_list)
-    name_plots = ['Displacement', 'Turning Angle', 'Velocity', 'Angle Degree',
-                  'Neural Net Summary', 'UMAP']
+    name_plots = ['Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'NPE Summary', 'UMAP']
     order     = [0, 2, 3, 1, 4, 5]  # reorder
 
     # 2) make one subplot per summary‐stat category
@@ -126,7 +51,7 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
         for patch, col in zip(b['boxes'], colors):
             patch.set_facecolor(col)
 
-        ax.set_xlabel(name_plots[grp_idx])
+        ax.set_xlabel(name_plots[grp_idx], fontsize=12)
         ax.set_xticks(np.arange(1, n_methods+1))
         ax.set_xticklabels([], rotation=45, ha='right')
         if ylog_scale and not grp_idx == 5:
@@ -136,146 +61,23 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
             if grp_idx != 0:
                 ax.set_yticks([])
         if grp_idx == 4:
-            ax.set_ylim(0.1, 10)
+            ax.set_ylim(0.1, 20)
 
     axes[0].set_ylabel(title, fontsize=12)
     axes[-2].set_ylabel("L1 Distance", fontsize=12)
     axes[-1].set_ylabel("Cosine Similarity", fontsize=12)
     for a in axes:
-        a.tick_params(axis="x", labelsize=12)
-        a.tick_params(axis="y", labelsize=12)
+        a.tick_params(axis="x", labelsize=10)
+        a.tick_params(axis="y", labelsize=10)
 
     # 3) shared legend
     handles = [Patch(facecolor=c, label=l) for c, l in zip(colors, labels)]
-    fig.legend(handles=handles, loc='lower center', ncol=2, bbox_to_anchor=(0.5, -0.3))
+    fig.legend(handles=handles, loc='lower center', ncol=2, bbox_to_anchor=(0.5, -0.33), fontsize=12)
 
     # 4) save & show
     if path:
         plt.savefig(path, bbox_inches='tight')
     plt.show()
-
-
-def plot_sumstats_distance_stats_bar(obj_func_comparison: callable, test_sim_dict: dict, sumstats_list: list[list],
-                                 labels: list[str] = None, colors: list[str] = None,
-                                 ylog_scale: bool = False,
-                                 title: str = 'Weighted\nWasserstein Distance',
-                                 path: str = None):
-    """
-    Plot the median and standard deviation of the Wasserstein distance between the summary statistics of the
-    test simulation and the simulations.
-    """
-    if labels is not None:
-        if len(labels) != len(sumstats_list):
-            raise ValueError("The number of labels should be equal to the number of summary statistics lists")
-
-    marginal_distances_list = []
-    for sumstats in sumstats_list:
-        # compute the distance for each hand-crafted summary statistics
-        marginal_distances = np.zeros((len(sumstats), len(test_sim_dict.keys())))
-        for i, st in enumerate(sumstats):
-            marginal_distances[i] = obj_func_comparison(test_sim_dict, st, return_marginal=True)
-        marginal_distances_list.append(marginal_distances)
-
-    fig, ax = plt.subplots(1, marginal_distances_list[0].shape[1], sharey=True, sharex=False,
-                           figsize=(10, 2), layout="constrained")
-    name_plots = ['Displacement', 'Turning Angle', 'Velocity', 'Angle Degree', 'Neural Net Summary']
-    order_stats = [0, 2, 3, 1, 4]  # order of the statistics to plot
-
-    for i_ax, i in enumerate(order_stats):
-        for j, marginal_distances in enumerate(marginal_distances_list):
-            # Compute median and standard deviation
-            median = np.median(marginal_distances[:, i])
-            error = median_abs_deviation(marginal_distances[:, i])
-
-            # Plot median and standard deviation
-            ax[i_ax].bar(j, median, yerr=error, align='center', alpha=0.8,
-                      label=labels[j] if labels is not None and i_ax == 0 else None,
-                      color=colors[j] if colors is not None else None, capsize=5)
-
-        ax[i_ax].set_xlabel(name_plots[i])
-
-    ax[0].set_ylabel(title)
-    ax[-1].set_ylabel('L1 Distance')
-    for a in ax:
-        if ylog_scale:
-            a.set_yscale('log')
-        a.set_xticks(np.arange(len(sumstats_list)), labels=['' for _ in range(len(sumstats_list))])
-
-    if labels is not None:
-        median_patch = Patch(color='grey', label='Median')
-        std_patch  = plt.plot([], [], color='black', label='Median Absolute Deviation')[0]
-
-        fig.legend(handles=[median_patch, std_patch] + ax[0].get_legend_handles_labels()[0],
-            loc='lower center', bbox_to_anchor=(0.5, -0.21),
-                   ncol=len(labels) // 2 + 1 if len(labels) > 3 else len(labels))
-    if path is not None:
-        plt.savefig(path, bbox_inches='tight')
-
-    plt.show()
-    return
-
-
-
-def plot_compare_summary_stats(test_sim: list, posterior_sim: list, path: str = None, compare_n: int = 5,
-                               seed: int = 42):
-    """
-    Compare the summary statistics of the test simulation and the posterior simulations using the Anderson-Darling
-    k-sample test and violin plots. Assumes that the first simulation of the posterior is the median/map.
-    """
-    if len(test_sim) != 1:
-        raise ValueError("The test simulation should only have one population")
-
-    np.random.seed(seed)
-
-    # compute the summary statistics
-    (MSD_mean_synth,
-     TA_mean_synth,
-     VEL_mean_synth,
-     ad_mean_synth) = compute_summary_stats(test_sim[0]) # should be only one population
-
-    MSD_mean_synth_sim = []
-    TA_mean_synth_sim = []
-    VEL_mean_synth_sim = []
-    ad_mean_synth_sim = []
-    for pop_sim in posterior_sim:
-        sum_stat = compute_summary_stats(pop_sim)
-        MSD_mean_synth_sim.append(sum_stat[0])
-        TA_mean_synth_sim.append(sum_stat[1])
-        VEL_mean_synth_sim.append(sum_stat[2])
-        ad_mean_synth_sim.append(sum_stat[3])
-
-    fig, ax = plt.subplots(nrows=1, ncols=4, tight_layout=True, figsize=(10, 5))
-
-    # always include the median (index 0)
-    if len(ad_mean_synth_sim) == 1:
-        random_index = [0]
-    else:
-        random_index = np.random.choice(range(1, len(ad_mean_synth_sim)),
-                                        min(compare_n, len(ad_mean_synth_sim)) - 1, replace=False)
-        random_index = np.append(0, random_index)
-
-    # Perform the Anderson-Darling k-sample test and plot for each statistic
-    # it might happen that lists are empty, so we need to check for that and add a dummy value
-    # Angle Degree
-    plot_violin(ax[0], [ad_mean_synth] + [ad_mean_synth_sim[i] if len(ad_mean_synth_sim[i]) > 0 else [0, 0] for i in random_index],
-                'Angle Degree', 'Angle Degree (degrees)\nMean per Cell')
-
-    # Mean Squared Displacement (MSD)
-    plot_violin(ax[1], [MSD_mean_synth] + [MSD_mean_synth_sim[i] if len(MSD_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
-                'Mean Squared Displacement', 'MSD\nMean per Cell')
-
-    # Turning Angle
-    plot_violin(ax[2], [TA_mean_synth] + [TA_mean_synth_sim[i] if len(TA_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
-                'Turning Angle', 'Turning Angle (radians)\nMean per Cell')
-
-    # Velocity
-    plot_violin(ax[3], [VEL_mean_synth] + [VEL_mean_synth_sim[i] if len(VEL_mean_synth_sim[i]) > 0 else [0, 0]  for i in random_index],
-                'Velocity', 'Velocity\nMean per Cell')
-
-    if path is not None:
-        plt.savefig(f'{path}.png')
-    plt.show()
-    return
 
 
 def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
@@ -741,14 +543,14 @@ def plot_posterior_1d(
             # posterior
             sns.histplot(
                 post_df[pname], ax=ax,
-                bins=20, kde=True,
+                bins='auto', kde=True, stat='probability',
                 color=labels_colors[name][1], alpha=1, fill=True
             )
 
             # prior
             sns.histplot(
                 prior_df[pname], ax=ax,
-                bins=20, kde=True,
+                bins=15, kde=False, stat='probability',
                 color="gray", alpha=0.7, fill=True, zorder=-1
             )
 
@@ -764,8 +566,8 @@ def plot_posterior_1d(
                 ax.set_ylabel("Density", fontsize=12)
             else:
                 ax.set_ylabel("")
-            ax.tick_params(axis="x", labelsize=12)
-            ax.tick_params(axis="y", labelsize=12)
+            ax.tick_params(axis="x", labelsize=10)
+            ax.tick_params(axis="y", labelsize=10)
             ax.grid(alpha=0.5)
             ax.set_xlim(prior_df[pname].values.min(), prior_df[pname].values.max())
 
@@ -780,15 +582,13 @@ def plot_posterior_1d(
                       Line2D([], [], color="black", linestyle="--"),
                       Line2D([], [], color="gray", lw=3, alpha=0.7),
                   ] + handles
-        labels = ["True Parameter", "Mean-NN Prediction", "Prior",
-                  "ABC Posterior", "ABC-NN-Mean Posterior", "ABC-NPE Posterior", "NPE Posterior",
-                  ]
-        fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=14,
-                   bbox_to_anchor=(0.5, -0.18), ncols=4)
+        labels = ["True Parameter", "Posterior Mean Prediction", "Prior"] + [val[0] for val in labels_colors.values()]
+        fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=12,
+                   bbox_to_anchor=(0.5, -0.23), ncols=3)
     else:
-        handles = [Line2D([], [], color="gray", lw=3, alpha=0.7)] + handles
-        labels = ["Prior", "ABC Posterior", "ABC-NPE Posterior", "NPE Posterior", "NPE-Ensemble Posterior"]
-        fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=14,
+        handles += [Line2D([], [], color="gray", lw=3, alpha=0.7)]
+        labels = [val[0] for val in labels_colors.values()] + ["Prior"]
+        fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=12,
                    bbox_to_anchor=(0.5, -0.18), ncols=3)
 
     if save_path is not None:
