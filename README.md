@@ -12,7 +12,7 @@ The model is built to explore how cell populations respond to chemokine gradient
 
 ## Description
 
-![](experiments/plots/cell_figure.png "Real Data Visualization")
+![](experiments/plots/cell_figure.png "Model Visualization")
 
 - 2D Cellular Potts Model  
 - Chemokine Gradient: Gaussian profile centered around a virtual source  
@@ -25,7 +25,7 @@ The model is built to explore how cell populations respond to chemokine gradient
 
 ## Results
 
-![](experiments/abs_results_real/real_data.pdf "Real Data Visualization")
+![](experiments/abc_results_real/real_data.pdf "Real Data Visualization")
 
 We integrated experimental observations of dendritic cell migration in a geometrically constrained microenvironment with a calibrated Cellular Potts Model 
 and demonstrate that these spatial constraints modulate motility dynamics, including velocity and directional changes.
