@@ -1,7 +1,7 @@
 # Simulation-Based Inference of Cell Migration Dynamics in Complex Spatial Environments
 
-authors: [J. Arruda, E. Alamoudi, R. Mueller, M. Vaisband, E. Kiermaier, J. Hasenauer]
- 
+Authors: J. Arruda, E. Alamoudi, R. Mueller, M. Vaisband, E. Kiermaier, J. Hasenauer
+
 
 ## Introduction
 
@@ -12,7 +12,7 @@ The model is built to explore how cell populations respond to chemokine gradient
 
 ## Description
 
-![](experiments/plots/cell_figure.png "Model Visualization")
+![cells squeezing through a pillar forest](experiments/plots/cell_figure.png "Model Visualization")
 
 - 2D Cellular Potts Model  
 - Chemokine Gradient: Gaussian profile centered around a virtual source  
@@ -25,7 +25,7 @@ The model is built to explore how cell populations respond to chemokine gradient
 
 ## Results
 
-![](experiments/abc_results_real/real_data.pdf "Real Data Visualization")
+![Cell trajectories in a pillar forest](experiments/plots/real_data.png "Real Data Visualization")
 
 We integrated experimental observations of dendritic cell migration in a geometrically constrained microenvironment with a calibrated Cellular Potts Model 
 and demonstrate that these spatial constraints modulate motility dynamics, including velocity and directional changes.
