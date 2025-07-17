@@ -1,13 +1,8 @@
 /morpheus-2.3.7
-/check_results.ipynb
 /redis-stable_new/
 /model_graph.dot
 /logger.csv
-/synth_data_params_4_wass/
-/synth_data_params_4_wass_var/
-/synth_data_params_4_wass_var_50cell/
-/experiments/old_networks
 /experiments/presimulations
-/experiments/archiv
+/archiv
 /.idea
 **.pickle
