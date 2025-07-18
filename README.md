@@ -1,6 +1,6 @@
 # Simulation-Based Inference of Cell Migration Dynamics in Complex Spatial Environments
 
-Authors: J. Arruda, E. Alamoudi, R. Mueller, M. Vaisband, E. Kiermaier, J. Hasenauer
+Authors: J. Arruda, E. Alamoudi, R. Mueller, M. Vaisband, R. Molkenbur, J. Merrin, E. Kiermaier, J. Hasenauer
 
 
 ## Introduction
