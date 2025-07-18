@@ -500,7 +500,7 @@ def plot_posterior_1d(
     log_param_names,
     test_sim, test_params,
     labels_colors,
-    make_sumstat_dict_nn,
+    make_sumstat_dict_nn=None,
     height=1.,
     save_path=None,
 ):
@@ -511,8 +511,12 @@ def plot_posterior_1d(
 
     # -- your existing helper to get reference_params for abc_mean, etc. --
     def get_reference(name, test_sim):
+        if make_sumstat_dict_nn is None:
+            return None
         if name == 'abc_mean':
             return make_sumstat_dict_nn(test_sim, use_npe_summaries=False)['summary_net']
+        elif name == 'npe':
+            return make_sumstat_dict_nn(test_sim, use_npe_summaries=True, return_reduced=True)['summary_pred']
         else:
             return None
 
@@ -582,7 +586,7 @@ def plot_posterior_1d(
                       Line2D([], [], color="black", linestyle="--"),
                       Line2D([], [], color="gray", lw=3, alpha=0.7),
                   ] + handles
-        labels = ["True Parameter", "Posterior Mean Prediction", "Prior"] + [val[0] for val in labels_colors.values()]
+        labels = ["True Parameter", "Summary Net Prediction", "Prior"] + [val[0] for val in labels_colors.values()]
         fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=12,
                    bbox_to_anchor=(0.5, -0.23), ncols=3)
     else:
