@@ -44,8 +44,9 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
 
     for ax, grp_idx in zip(axes, order):
         data = marginal_distances_list[:, :, grp_idx]   # (n_methods, n_sim, n_stats)
+        cleaned_data = [np.array(group)[~np.isinf(group)] for group in data]
         # boxplot: one array per method
-        b = ax.boxplot(data.T, patch_artist=True)
+        b = ax.boxplot(cleaned_data, patch_artist=True)
 
         # color each box
         for patch, col in zip(b['boxes'], colors):
@@ -567,7 +568,7 @@ def plot_posterior_1d(
             # styling
             ax.set_xlabel(pname, fontsize=12)
             if j == 0:
-                ax.set_ylabel("Density", fontsize=12)
+                ax.set_ylabel(f"{list(labels_colors.values())[i][2]}\nDensity", fontsize=12)
             else:
                 ax.set_ylabel("")
             ax.tick_params(axis="x", labelsize=10)
