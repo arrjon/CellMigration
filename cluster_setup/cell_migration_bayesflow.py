@@ -151,7 +151,7 @@ n_params = len(obs_pars)
 batch_size = 32
 iterations_per_epoch = 100
 # 1000 batches to be generated, 10 epochs until the batch is used again -> 32.000 simulations
-epochs = 500
+epochs = 500  # 50 effective epochs
 
 # check if gpu is available
 print('gpu:', tf.config.list_physical_devices('GPU'))
