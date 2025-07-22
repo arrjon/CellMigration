@@ -7,6 +7,8 @@ import keras
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tqdm import tqdm
+
 from bayesflow import default_settings as defaults
 from bayesflow.amortizers import AmortizedPosterior
 from bayesflow.helper_networks import MultiConv1D
@@ -304,6 +306,20 @@ class EnsembleTrainer:
                 out = amortizer.summary_net(summary_conditions[a_i]['summary_conditions'])
                 out_list.append(out)
             return np.concatenate(out_list, axis=1)
+
+        def log_posterior(self, configured_data: list[dict], n_samples: int = 1) -> np.ndarray:
+            if self.n_amortizers != len(configured_data):
+                raise ValueError(f'Number of summary_conditions ({len(configured_data)})'
+                                 f' does not match number of amortizers ({self.n_amortizers}).')
+
+            log_posteriors = []
+            for _ in tqdm(range(n_samples)):
+                log_posterior_a = []
+                for a_i, amortizer in enumerate(self.amortizers):
+                    configured_data[a_i].update({'parameters': amortizer.sample(configured_data[a_i], n_samples=1)})
+                    log_posterior_a.append(amortizer.log_posterior(configured_data[a_i]))
+                log_posteriors.append(log_posterior_a)
+            return np.array(log_posteriors).reshape(self.n_amortizers, n_samples)
 
     class EnsembleLossHistory:
         def __init__(self, trainers):
