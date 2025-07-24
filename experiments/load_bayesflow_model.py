@@ -2,6 +2,7 @@ import logging
 import os
 import pickle
 from functools import partial
+import copy
 
 import keras
 import numpy as np
@@ -307,19 +308,40 @@ class EnsembleTrainer:
                 out_list.append(out)
             return np.concatenate(out_list, axis=1)
 
-        def log_posterior(self, configured_data: list[dict], n_samples: int = 1) -> np.ndarray:
-            if self.n_amortizers != len(configured_data):
-                raise ValueError(f'Number of summary_conditions ({len(configured_data)})'
-                                 f' does not match number of amortizers ({self.n_amortizers}).')
+        def log_posterior_mean_diff(self, configured_data: list[dict], n_samples: int = 1) -> np.ndarray:
+            """
+            Calculate the mean log-posterior differences between amortizers.
 
-            log_posteriors = []
-            for _ in tqdm(range(n_samples)):
-                log_posterior_a = []
-                for a_i, amortizer in enumerate(self.amortizers):
-                    configured_data[a_i].update({'parameters': amortizer.sample(configured_data[a_i], n_samples=1)})
-                    log_posterior_a.append(amortizer.log_posterior(configured_data[a_i]))
-                log_posteriors.append(log_posterior_a)
-            return np.array(log_posteriors).reshape(self.n_amortizers, n_samples)
+            Returns a (m, m) array K where
+                K[i, j] = mean_k [ log_posterior_i(sample from amortizer_i)
+                                 - log_posterior_j(sample from amortizer_i) ].
+            """
+            if self.n_amortizers != len(configured_data):
+                raise ValueError(f'Number of summary_conditions ({len(configured_data)}) '
+                                 f'does not match number of amortizers ({self.n_amortizers}).')
+
+            # Prepare output matrix
+            K = np.zeros((self.n_amortizers, self.n_amortizers))
+
+            # For each amortizer i, sample and evaluate
+            for a_i, amortizer_i in enumerate(self.amortizers):
+                samples = amortizer_i.sample(configured_data[a_i], n_samples=n_samples)
+
+                # collect log-posteriors: shape (n_samples, m)
+                log_posts = np.zeros((n_samples, self.n_amortizers))
+                for k in tqdm(range(n_samples)):
+                    # build a fresh input dict for amortizer evaluation
+                    data_k = copy.deepcopy(configured_data[a_i])
+                    data_k['parameters'] = samples[[k], :]
+                    # evaluate under each amortizer j
+                    for a_j, amortizer_j in enumerate(self.amortizers):
+                        log_posts[k, a_j] = amortizer_j.log_posterior(data_k)
+
+                # compute mean differences for this a_i
+                # K[a_i, j] = E[log_posts[:, a_i] -  log_posts[:, j]]
+                K[a_i, :] = np.mean(log_posts[:, [a_i]] - log_posts, axis=0)
+            return K
+
 
     class EnsembleLossHistory:
         def __init__(self, trainers):
