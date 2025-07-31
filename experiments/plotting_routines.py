@@ -51,6 +51,8 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
         # color each box
         for patch, col in zip(b['boxes'], colors):
             patch.set_facecolor(col)
+        for median in b['medians']:
+            median.set_color('black')
 
         ax.set_xlabel(name_plots[grp_idx], fontsize=12)
         ax.set_xticks(np.arange(1, n_methods+1))
@@ -512,6 +514,7 @@ def plot_posterior_1d(
 
     # -- your existing helper to get reference_params for abc_mean, etc. --
     def get_reference(name, test_sim):
+        # test if make_sumstat_dict_nn is None
         if make_sumstat_dict_nn is None:
             return None
         if name == 'abc_mean':
@@ -544,19 +547,20 @@ def plot_posterior_1d(
 
         for j, pname in enumerate(log_param_names):
             ax = axes[i, j]
+            binwidth = np.round(prior_draws[:, j].max() - prior_draws[:, j].min()) / 25
 
             # posterior
             sns.histplot(
                 post_df[pname], ax=ax,
-                bins='auto', kde=True, stat='probability',
-                color=labels_colors[name][1], alpha=1, fill=True
+                binwidth=binwidth, kde=False, stat='probability',
+                color=labels_colors[name][1], alpha=1, fill=True, linewidth=0.01
             )
 
             # prior
             sns.histplot(
                 prior_df[pname], ax=ax,
-                bins=15, kde=False, stat='probability',
-                color="gray", alpha=0.7, fill=True, zorder=-1
+                binwidth=binwidth, kde=False, stat='probability',
+                color="gray", alpha=0.7, fill=True, zorder=-1, linewidth=0.01
             )
 
             # true & reference lines
@@ -577,7 +581,7 @@ def plot_posterior_1d(
             ax.set_xlim(prior_df[pname].values.min(), prior_df[pname].values.max())
 
         handles.append(
-            Line2D([], [], color=labels_colors[name][1], lw=3, alpha=1)
+            Patch(color=labels_colors[name][1], alpha=1)
         )
 
     # shared legend below all rows
@@ -585,13 +589,13 @@ def plot_posterior_1d(
         handles = [
                       Line2D([], [], color="red", linestyle="--"),
                       Line2D([], [], color="black", linestyle="--"),
-                      Line2D([], [], color="gray", lw=3, alpha=0.7),
+                      Patch(color='grey', alpha=0.7),
                   ] + handles
         labels = ["True Parameter", "Summary Net Prediction", "Prior"] + [val[0] for val in labels_colors.values()]
         fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=12,
                    bbox_to_anchor=(0.5, -0.23), ncols=3)
     else:
-        handles += [Line2D([], [], color="gray", lw=3, alpha=0.7)]
+        handles += [Patch(color='grey', alpha=0.7)]
         labels = [val[0] for val in labels_colors.values()] + ["Prior"]
         fig.legend(handles, labels, loc="lower center", ncol=len(handles), fontsize=12,
                    bbox_to_anchor=(0.5, -0.18), ncols=3)
