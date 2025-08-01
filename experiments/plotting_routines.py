@@ -67,7 +67,7 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
             ax.set_ylim(0.1, 20)
 
     axes[0].set_ylabel(title, fontsize=12)
-    axes[-2].set_ylabel("L1 Distance", fontsize=12)
+    axes[-2].set_ylabel(r"$L^1$ Distance", fontsize=12)
     axes[-1].set_ylabel("Cosine Similarity", fontsize=12)
     for a in axes:
         a.tick_params(axis="x", labelsize=10)
@@ -553,14 +553,14 @@ def plot_posterior_1d(
             sns.histplot(
                 post_df[pname], ax=ax,
                 binwidth=binwidth, kde=False, stat='probability',
-                color=labels_colors[name][1], alpha=1, fill=True, linewidth=0.01
+                color=labels_colors[name][1], alpha=1, fill=True, linewidth=0
             )
 
             # prior
             sns.histplot(
                 prior_df[pname], ax=ax,
                 binwidth=binwidth, kde=False, stat='probability',
-                color="gray", alpha=0.7, fill=True, zorder=-1, linewidth=0.01
+                color="gray", alpha=0.7, fill=True, zorder=-1, linewidth=0
             )
 
             # true & reference lines
