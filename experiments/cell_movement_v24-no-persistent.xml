@@ -33,7 +33,7 @@
         <SaveInterval value="0"/>
     </Time>
     <Analysis>
-        <ModelGraph format="dot" reduced="false" include-tags="#untagged"/>
+        <ModelGraph format="dot" reduced="true" include-tags="#untagged"/>
         <Logger time-step="10">
             <Input>
                 <Symbol symbol-ref="nodeL"/>
@@ -140,24 +140,26 @@
             <Constant symbol="move.duration.mean" name="Mean of exponential waiting time (seconds)" value="0.1 "/>
             <Property symbol="tumble.run_duration" name="run duration" value="0.0"/>
             <Property symbol="tumble.last" name="last tumble event" value="0"/>
-            <DirectedMotion direction="move.dir" name="Persistent.Random.Walk" strength="move.strength"/>
-            <Event trigger="when-true" time-step="5" name="tumble">
-                <Condition>time >= tumble.last + 5</Condition>
-                <!--    <Disabled>
-        <Condition>time >= tumble.last + tumble.run_duration</Condition>
+            <!--    <Disabled>
+        <DirectedMotion direction="move.dir" name="Persistent.Random.Walk" strength="move.strength"/>
     </Disabled>
 -->
-                <Rule symbol-ref="tumble.last" name="last tumble event">
-                    <Expression>time</Expression>
-                </Rule>
-                <Rule symbol-ref="tumble.run_duration" name="new update time (gamma distributed)">
-                    <Expression>rand_gamma(move.duration.shape, move.duration.scale)    </Expression>
-                </Rule>
-                <Intermediate symbol="alpha" name="angle for random direction" value="rand_uni(0,2*pi)"/>
-                <VectorRule symbol-ref="move.dir" name="random direction" notation="x,y,z">
-                    <Expression>cos(alpha), sin(alpha) , 0</Expression>
-                </VectorRule>
-            </Event>
+            <!--    <Disabled>
+        <Event trigger="when-true" name="tumble">
+            <Condition>time >= tumble.last + tumble.run_duration</Condition>
+            <Rule symbol-ref="tumble.last" name="last tumble event">
+                <Expression>time</Expression>
+            </Rule>
+            <Rule symbol-ref="tumble.run_duration" name="new update time (gamma distributed)">
+                <Expression>rand_gamma(move.duration.shape, move.duration.scale)    </Expression>
+            </Rule>
+            <Intermediate symbol="alpha" name="angle for random direction" value="rand_uni(0,2*pi)"/>
+            <VectorRule symbol-ref="move.dir" name="random direction" notation="x,y,z">
+                <Expression>cos(alpha), sin(alpha) , 0</Expression>
+            </VectorRule>
+        </Event>
+    </Disabled>
+-->
             <Constant symbol="gradient_strength" name="gradient of chemokine" value="1"/>
             <Chemotaxis strength="gradient_strength*1000" field="u1"/>
         </CellType>
