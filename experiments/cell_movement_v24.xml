@@ -139,10 +139,10 @@
             <VolumeConstraint target="cell_nodes" name="target volume in μm^2 / (nodeL*nodeL)" strength="1"/>
             <Constant symbol="alpha_start" name="angle for random starting direction" value="rand_uni(0,2*pi) "/>
             <PropertyVector symbol="move.dir" name="random direction" value="cos(alpha_start), sin(alpha_start), 0 "/>
-            <Constant symbol="move.duration.scale" name="Inverse mean of exponential distribution (1/seconds)" value="1 / move.duration.mean"/>
+            <Constant symbol="move.duration.scale" name="Mean of exponential distribution (seconds)" value="1 / move.duration.rate"/>
             <Constant symbol="move.duration.shape" name="shape of gamma distribution fixed to be an exponential" value="1"/>
             <Constant symbol="move.strength" name="strength of directed movement" value="10"/>
-            <Constant symbol="move.duration.mean" name="Mean of exponential waiting time (seconds)" value="0.1 "/>
+            <Constant symbol="move.duration.rate" name="Rate of exponential waiting time (1/seconds)" value="0.1 "/>
             <Property symbol="tumble.run_duration" name="run duration" value="0.0"/>
             <Property symbol="tumble.last" name="last tumble event" value="0"/>
             <DirectedMotion direction="move.dir" name="Persistent.Random.Walk" strength="move.strength"/>
