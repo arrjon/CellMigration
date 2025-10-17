@@ -35,6 +35,10 @@
         <RandomSeed value="0"/>
     </Disabled>
 -->
+        <!--    <Disabled>
+        <StopTime value="1500"/>
+    </Disabled>
+-->
     </Time>
     <Analysis>
         <ModelGraph format="dot" reduced="true" include-tags="#untagged"/>
@@ -51,19 +55,19 @@
         </Logger>
         <!--    <Disabled>
         <Gnuplotter time-step="500">
-            <Plot>
+            <Plot internal:disabled="true">
                 <Field symbol-ref="u1"/>
                 <Cells internal:disabled="true" value="cell.id"/>
             </Plot>
-            <Terminal name="png"/>
-            <Plot>
+            <Terminal name="png" size="100000, 6400, 0"/>
+            <Plot internal:disabled="true">
                 <Field symbol-ref="dummy"/>
                 <Cells value="cell.id"/>
             </Plot>
             <Plot>
                 <Cells value="cell.id"/>
                 <Field symbol-ref="u1"/>
-                <CellArrows orientation="5 * move_dir"/>
+                <CellArrows orientation="5 * move_dir" internal:disabled="true"/>
             </Plot>
         </Gnuplotter>
     </Disabled>
@@ -91,7 +95,7 @@
     <Global>
         <Constant symbol="tumble.run_duration" value="0"/>
         <Constant symbol="cell_nodes" name="CPM cell volume (μm^2 / 1.31^2)" value="cell_nodes_real / (nodeL*nodeL)"/>
-        <Constant symbol="cell_nodes_real" name="CPM cell volume μm^2" value="143"/>
+        <Constant symbol="cell_nodes_real" name="CPM cell volume μm^2" value="41.73"/>
         <Constant symbol="x0_chemokine" name="position chemokine source in um" value="x0_sim * nodeL"/>
         <Constant symbol="y0_chemokine" name="position chemokine source in μm" value="hole.diam+hole.diam/2+270"/>
         <Field symbol="dummy" value="-1"/>
@@ -141,8 +145,8 @@
             <PropertyVector symbol="move.dir" name="random direction" value="cos(alpha_start), sin(alpha_start), 0 "/>
             <Constant symbol="move.duration.scale" name="Mean of exponential distribution (seconds)" value="1 / move.duration.rate"/>
             <Constant symbol="move.duration.shape" name="shape of gamma distribution fixed to be an exponential" value="1"/>
-            <Constant symbol="move.strength" name="strength of directed movement" value="10"/>
-            <Constant symbol="move.duration.rate" name="Rate of exponential waiting time (1/seconds)" value="0.1 "/>
+            <Constant symbol="move.strength" name="strength of directed movement" value="28.67"/>
+            <Constant symbol="move.duration.rate" name="Rate of exponential waiting time (1/seconds)" value="0.002"/>
             <Property symbol="tumble.run_duration" name="run duration" value="0.0"/>
             <Property symbol="tumble.last" name="last tumble event" value="0"/>
             <DirectedMotion direction="move.dir" name="Persistent.Random.Walk" strength="move.strength"/>
@@ -159,7 +163,7 @@
                     <Expression>cos(alpha), sin(alpha) , 0</Expression>
                 </VectorRule>
             </Event>
-            <Constant symbol="gradient_strength" name="gradient of chemokine" value="1"/>
+            <Constant symbol="gradient_strength" name="gradient of chemokine" value="35.46"/>
             <Chemotaxis strength="gradient_strength*1000" field="u1"/>
         </CellType>
     </CellTypes>

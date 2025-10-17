@@ -9,10 +9,12 @@ from matplotlib.lines import Line2D
 
 from summary_stats import compute_summary_stats, compute_autocorrelation
 
-
+from itertools import combinations
+from scipy.stats import mannwhitneyu
+from statsmodels.stats.multitest import multipletests
 def plot_sumstats_distance_stats(obj_func_comparison: callable,
                                  test_sim_dict: dict,
-                                 sumstats_list: list[list],
+                                 sumstats_list: list[list[dict]],
                                  labels: list[str] = None,
                                  colors: list[str] = None,
                                  ylog_scale: bool = False,
@@ -30,7 +32,22 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
         for i, st in enumerate(sumstats):
             md[i, :] = obj_func_comparison(test_sim_dict, st, return_marginal=True)
         marginal_distances_list.append(md)
-    marginal_distances_list = np.array(marginal_distances_list)
+    marginal_distances_list = np.array(marginal_distances_list)  # (n_methods, n_sim, statistics)
+
+    stats = []
+    for method in sumstats_list:
+        stat_method = {k: [] for k in method[0].keys()}
+        for sim in method:
+            for k in method[0].keys():
+                if isinstance(sim[k], np.ndarray):
+                    stat_method[k] += list(sim[k])
+                else:
+                    stat_method[k] += [sim[k]]
+        for k in method[0].keys():
+            stat_method[k] = np.array(stat_method[k])
+            # only keep finite values
+            stat_method[k] = stat_method[k][np.isfinite(stat_method[k])]
+        stats.append(stat_method)
 
     n_stats = len(test_sim_dict)
     n_methods  = len(sumstats_list)
@@ -81,6 +98,31 @@ def plot_sumstats_distance_stats(obj_func_comparison: callable,
     if path:
         plt.savefig(path, bbox_inches='tight')
     plt.show()
+
+    # 5) Statistical tests
+    alpha = 0.05
+    method_names = labels if labels is not None else [f"Method {i}" for i in range(len(sumstats_list))]
+    pair_results = []
+
+    for grp_idx, grp_name in enumerate(name_plots):
+        # extract data for this summary‐stat group
+        data = marginal_distances_list[:, :, grp_idx]
+        cleaned_data = [np.array(group)[~np.isinf(group)] for group in data]
+
+        # all pairwise combinations
+        pairs = list(combinations(range(len(cleaned_data)), 2))
+        pvals = []
+        for (i, j) in pairs:
+            _, p = mannwhitneyu(cleaned_data[i], cleaned_data[j], alternative='two-sided')
+            pvals.append(p)
+
+        # FDR correction
+        reject, pvals_corr, _, _ = multipletests(pvals, alpha=alpha, method='fdr_bh')
+
+        print(f"\n--- {grp_name} ---")
+        for (i, j), p, pc, r in zip(pairs, pvals, pvals_corr, reject):
+            signif = "Significant" if r else "NS"
+            print(f"{method_names[i]} vs {method_names[j]}: raw p={p:.3e}, corrected p={pc:.3e}, {signif}")
 
 
 def plot_trajectory(test_sim: np.ndarray, posterior_sim: np.ndarray,
@@ -344,13 +386,13 @@ def plot_posterior_2d(
     true_params=None,
     reference_params=None,
     height=2,
-    label_fontsize=16,
-    legend_fontsize=18,
+    label_fontsize=14,
+    legend_fontsize=14,
     tick_fontsize=12,
     bins="auto",
     post_color="#8f2727",
     prior_color="gray",
-    post_alpha=0.9,
+    post_alpha=1.0,
     prior_alpha=0.7,
 ):
     """Generates a bivariate pairplot given posterior draws and optional prior or prior draws.
@@ -430,14 +472,15 @@ def plot_posterior_2d(
 
     # Add posterior
     g = sns.PairGrid(posterior_draws_df, height=height)
-    g.map_diag(sns.histplot, fill=True, color=post_color, alpha=post_alpha, bins=bins, kde=True)
+    g.map_diag(sns.histplot, fill=True, color=post_color, alpha=post_alpha, bins=bins, kde=False, linewidth=0)
     g.map_lower(sns.kdeplot, fill=True, color=post_color, alpha=post_alpha)
 
     # Add prior, if given
     if prior_draws is not None:
         prior_draws_df = pd.DataFrame(prior_draws, columns=param_names)
         g.data = prior_draws_df
-        g.map_diag(sns.histplot, fill=True, color=prior_color, alpha=prior_alpha, bins=bins, kde=True, zorder=-1)
+        g.map_diag(sns.histplot, fill=True, color=prior_color, alpha=prior_alpha, bins=bins,
+                   kde=False, zorder=-1, linewidth=0)
         g.map_lower(sns.kdeplot, fill=True, color=prior_color, alpha=prior_alpha, zorder=-1)
 
     # Custom function to plot true_params on the diagonal

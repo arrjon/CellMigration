@@ -145,7 +145,7 @@ def generate_population_data(param_batch: np.ndarray, cells_in_population: int, 
 # %%
 
 presimulation_path = '/home/jarruda_hpc/CellMigration/presimulations'
-n_val_data = 100
+n_val_data = 1000
 cells_in_population = 143
 n_params = len(obs_pars)
 batch_size = 32
